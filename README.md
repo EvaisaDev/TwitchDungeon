@@ -1,1 +1,1 @@
-Use github page to play with.
+You can play around with this @https://evaisadev.github.io/TwitchDungeon/
