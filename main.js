@@ -316,6 +316,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                     winner = option
                 }
             });
+            viewerVotes = []
+            activeVoteEntry = null
+            timeLeft = 0
             activeVote = null
             toggleInput(true)
             finishCallback(winner)
