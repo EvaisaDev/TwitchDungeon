@@ -543,6 +543,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             ws.send('PASS SCHMOOPIIE');
             ws.send('NICK justinfan12345');
             ws.send('JOIN #' + twitchChannel);
+
+            // ping 
         };
 
         ws.onmessage = function incoming(event) {
@@ -564,6 +566,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                     }
                 }
 
+            }
+
+            // respond to pings
+            if (parsedMessage.command === 'PING') {
+                ws.send('PONG :tmi.twitch.tv');
+                ws.send('PONG :tmi.twitch.tv\r\n');
+                print('PONG :tmi.twitch.tv');
             }
 
          
