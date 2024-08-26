@@ -264,6 +264,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     let activeVote = null
     let viewerVotes = []
     let activeVoteEntry = null
+    let timeLeft = 0
 
     async function GenerateVoteMessage(){
         if(activeVoteEntry){
@@ -271,6 +272,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             activeVote.forEach((option, index) => {
                 output += `${index + 1}) [${option.votes}] ${option.text}&f\n`
             });
+            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
             activeVoteEntry.innerHTML = parseMinecraftColorCodes(output)
             outputDiv.scrollTop = outputDiv.scrollHeight;
         }else{
@@ -279,6 +281,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 TryToSpeak(`${index + 1}. ${option.text}&f\n`)
                 output += `${index + 1}) ${option.text}&f\n`
             });
+            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
             activeVoteEntry = print(output, false, true)
         }
     }
@@ -294,6 +297,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             option.votes = 0
         });
         GenerateVoteMessage()
+        timeLeft = duration
         setTimeout(() => {
             // select random winner first
             let winner = activeVote[Math.floor(Math.random() * activeVote.length)]
@@ -306,7 +310,16 @@ document.addEventListener('DOMContentLoaded', async function() {
             activeVote = null
             toggleInput(true)
             finishCallback(winner)
-        }, duration * 1000)
+        }, duration * 1000 + 1000)
+
+        // run a timer to update the vote message every second
+        let timer = setInterval(() => {
+            timeLeft--
+            if(timeLeft <= 0){
+                clearInterval(timer)
+            }
+            GenerateVoteMessage()
+        }, 1000)
     }
     
     function imageToMinecraftAscii(ctx, width, height, outputWidth, output) {
@@ -535,7 +548,6 @@ document.addEventListener('DOMContentLoaded', async function() {
                         if(vote && vote > 0 && vote <= activeVote.length){
                             activeVote[vote - 1].votes++
                             viewerVotes.push(username)
-                            GenerateVoteMessage()
                         }
                     }
                 }
