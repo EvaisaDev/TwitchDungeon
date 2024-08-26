@@ -572,7 +572,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (parsedMessage.command === 'PING') {
                 ws.send('PONG :tmi.twitch.tv');
                 ws.send('PONG :tmi.twitch.tv\r\n');
-                print('PONG :tmi.twitch.tv');
+                console.log('PONG :tmi.twitch.tv');
             }
 
          
