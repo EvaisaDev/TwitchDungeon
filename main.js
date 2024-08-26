@@ -1287,12 +1287,15 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                                     await asyncGenerateImage(output)
                                 }
                                 toggleInput(true)
+
+                                
+                 
+                                compressAndAddToHistory( output, "assistant")
+                                print(output)
+                                print("-------------------------", false, true)
+
                                 waitForKeypress(async () => {
                                     toggleInput(false)
-                 
-                                    compressAndAddToHistory( output, "assistant")
-                                    print(output)
-                                    print("-------------------------", false, true)
                                     checkForChanges(output, true, () => {
                                         print("-------------------------", false, true)
                                         // check if the streamer is participating
