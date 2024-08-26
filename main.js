@@ -204,6 +204,32 @@ document.addEventListener('DOMContentLoaded', async function() {
         localStorage.setItem('twitchdungeon-narrator-voice-alias', narratorVoiceAlias.value);
     });
 
+    let activeVote = null
+    let viewerVotes = []
+    let activeVoteEntry = null
+    let timeLeft = 0
+
+    async function GenerateVoteMessage(){
+        if(activeVoteEntry){
+            let output = ""
+            activeVote.forEach((option, index) => {
+                output += `${index + 1}) [${option.votes}] ${option.text}&f\n`
+            });
+            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
+            activeVoteEntry.innerHTML = parseMinecraftColorCodes(output)
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        }else{
+            let output = ""
+            activeVote.forEach((option, index) => {
+                TryToSpeak(`${index + 1}. ${option.text}&f\n`)
+                output += `${index + 1}) ${option.text}&f\n`
+            });
+            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
+            activeVoteEntry = print(output, false, true)
+        }
+    }
+
+
     let apiKeyVisible = false;
 
     function parseTwitchMessage(message) {
@@ -261,32 +287,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         return tags;
     }
 
-    let activeVote = null
-    let viewerVotes = []
-    let activeVoteEntry = null
-    let timeLeft = 0
 
-    async function GenerateVoteMessage(){
-        if(activeVoteEntry){
-            let output = ""
-            activeVote.forEach((option, index) => {
-                output += `${index + 1}) [${option.votes}] ${option.text}&f\n`
-            });
-            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
-            activeVoteEntry.innerHTML = parseMinecraftColorCodes(output)
-            outputDiv.scrollTop = outputDiv.scrollHeight;
-        }else{
-            let output = ""
-            activeVote.forEach((option, index) => {
-                TryToSpeak(`${index + 1}. ${option.text}&f\n`)
-                output += `${index + 1}) ${option.text}&f\n`
-            });
-            output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
-            activeVoteEntry = print(output, false, true)
-        }
-    }
 
     async function StartTwitchVote(options, duration, finishCallback){
+
+        activeVote = null
+        viewerVotes = []
+        activeVoteEntry = null
+        timeLeft = 0
+
         // disable input
         toggleInput(false)
         // clear previous vote
@@ -1223,6 +1232,8 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                     print(`Viewers, please vote for the next move.`)
                 
                     toggleInput(false)
+                    viewerVotes = []
+                    
                     StartTwitchVote(voteOptions, parseInt(voteTime.value), async (winner) => {
                         print(`${characters.twitch_chat.name} decides to ${winner.text}`)
 
