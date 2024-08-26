@@ -425,75 +425,100 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     async function generateImage(prompt, callback){
 
-        let summary = await asyncGenerateSummary(prompt)
+        try{
+            let summary = await asyncGenerateSummary(prompt)
 
-        // json parse the summary
-        let summaryData = JSON.parse(summary)
+            // json parse the summary
+            let summaryData = JSON.parse(summary)
 
-        prompt = summaryData.choices[0].message.content
+            prompt = summaryData.choices[0].message.content
 
-        // generate an image using dall-e
-        let endpoint = `v1/images/generations`
-        const body = {
-            model: "dall-e-2",
-            prompt: `${prompt}, in the style of a pixel art game.`,
-            size: "256x256",
-            response_format: "b64_json",
-            n: 1,
-        };
+            // generate an image using dall-e
+            let endpoint = `v1/images/generations`
+            const body = {
+                model: "dall-e-2",
+                prompt: `${prompt}, in the style of a pixel art game.`,
+                size: "256x256",
+                response_format: "b64_json",
+                n: 1,
+            };
 
-        const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, apiKey, body);
 
-        // read whole stream and get the image.
-        let image = ""
-        HandleStream(response.body, async(text) => {
-            image += text
-        }, () => {
-            // parse json
-            let content = JSON.parse(image)
+            if (response.status === 200) {
+                // read whole stream and get the image.
+                let image = ""
+                HandleStream(response.body, async(text) => {
+                    image += text
+                }, () => {
+                    // parse json
+                    try {
+                        let content = JSON.parse(image)
 
-            let imageb64 = content.data[0].b64_json;
-            
-            let img = new Image();
-            img.src = 'data:image/png;base64,' + imageb64;
-            img.onload = function() {
-                // resize the image to 32x32
-                const canvas = document.createElement('canvas');
-                const ctx = canvas.getContext('2d');
-                canvas.width = 32;
-                canvas.height = 32;
-                ctx.drawImage(img, 0, 0, 32, 32);
-            
-                /*
+                        let imageb64 = content.data[0].b64_json;
+                        
+                        let img = new Image();
+                        img.src = 'data:image/png;base64,' + imageb64;
+                        img.onload = function() {
+                            
+                            // resize the image to 32x32
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            canvas.width = 32;
+                            canvas.height = 32;
+                            ctx.drawImage(img, 0, 0, 32, 32);
+                        
+                            /*
 
-                const ascii = imageToMinecraftAscii(ctx, 32, 32);
-                // split by new line
-                let lines = ascii.split('\n')
+                            const ascii = imageToMinecraftAscii(ctx, 32, 32);
+                            // split by new line
+                            let lines = ascii.split('\n')
 
-                // loop through each line and print it
-                lines.forEach(line => {
-                    print(line, true)
+                            // loop through each line and print it
+                            lines.forEach(line => {
+                                print(line, true)
+                            });
+
+                            if(callback){
+                                callback(ascii)
+                            }*/
+
+                            // add image to output
+                            const imageDiv = document.createElement('div');
+                            imageDiv.classList.add('image');
+                            imageDiv.appendChild(img);
+                            outputDiv.appendChild(imageDiv);
+                            // Scroll to the bottom of the terminal
+                            outputDiv.scrollTop = outputDiv.scrollHeight;
+
+                            if(callback){
+                                callback()
+                            }
+                        };
+
+                    } catch (error) {
+                        console.log(error)
+                        if(callback){
+                            callback()
+                        }
+
+                    }
+                    
+                
                 });
-
-                if(callback){
-                    callback(ascii)
-                }*/
-
-                // add image to output
-                const imageDiv = document.createElement('div');
-                imageDiv.classList.add('image');
-                imageDiv.appendChild(img);
-                outputDiv.appendChild(imageDiv);
-                // Scroll to the bottom of the terminal
-                outputDiv.scrollTop = outputDiv.scrollHeight;
-
+            }else{
+                console.log(response)
                 if(callback){
                     callback()
                 }
-            };
-            
-           
-        });
+            }
+        }catch(error){
+
+            console.log(error)
+            if(callback){
+                callback()
+            }
+        }
 
     }
 
@@ -529,6 +554,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 });
             }else{
                 console.log(response)
+                reject()
             }
         })
     }
@@ -1175,14 +1201,23 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                     output += text
                 }
                 , () => {
-                    // parse json
-                    let data = JSON.parse(output)
-                    let compressed = data.choices[0].message.content
-                    // add the compressed text to the history
-                    AddToHistory(compressed, role)
-                    console.log("Added to history: " + compressed)
-                    resolve()
+                    try {
+                        // parse json
+                        let data = JSON.parse(output)
+                        let compressed = data.choices[0].message.content
+                        // add the compressed text to the history
+                        AddToHistory(compressed, role)
+                        console.log("Added to history: " + compressed)
+                        resolve()
+                    }   
+                    catch (error) {
+                        console.log(error)
+                        reject()
+                    }
                 });
+            }else{
+                console.log(response)
+                reject()
             }
         })
     }
@@ -1665,6 +1700,8 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
                 callback()
             });
+        }else{
+            callback()
         }
     }
 
