@@ -107,7 +107,12 @@
 
         function resize(e) {
             if (!isResizing) return;
-            console.log('resizing');
+            // prevent selection of text
+            if(e.stopPropagation) e.stopPropagation();
+            if(e.preventDefault) e.preventDefault();
+            e.cancelBubble=true;
+            e.returnValue=false;
+
             let containerOffsetLeft = document.getElementById('main-container').offsetLeft;
             let pointerRelativeXpos = e.clientX - containerOffsetLeft;
             let newLeftWidth = (pointerRelativeXpos / document.getElementById('main-container').offsetWidth) * 100;
@@ -120,6 +125,15 @@
             document.removeEventListener('mousemove', resize);
             document.removeEventListener('mouseup', stopResize);
         }
+
+        // keep the text input in focus as long as the window is open, or when clicked on the terminal
+        window.addEventListener('focus', function() {
+            document.getElementById('input').focus();
+        });
+
+        document.getElementById('terminal').addEventListener('click', function() {
+            document.getElementById('input').focus();
+        });
     </script>
     <script src="main.js"></script>
 </body>

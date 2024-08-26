@@ -103,7 +103,7 @@ body {
     border: none;
     font-size: 24px;
     color: #ffffff;
-    flex-grow: 1;
+    flex-grow: 0;
     outline: none;
     text-align: left;
 }

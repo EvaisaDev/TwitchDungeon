@@ -51,6 +51,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     '&f': 'color:#FFFFFF'
     Make sure to type &f after you are done coloring your text to reset the color to white.
     Example: "&4Redwood forest&f" will color the text "Redwood forest" red.
+    Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
+    Do not format your text with markdown, this is not supported. Only use minecraft color codes.
+    Use minecraft color codes where-ever you can.
     `;
     
     let gptBasePrompt = promptTemplate;
