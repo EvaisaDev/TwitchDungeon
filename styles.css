@@ -7,19 +7,78 @@ body {
     color: #ffffff;
     height: 100vh;
     overflow: hidden;
+    display: flex;
+}
+
+#sidebar {
+    width: 350px;
+    height: 100%;
+    position: absolute; /* Overlay the sidebar */
+    top: 0;
+    right: -350px; /* Initially hidden */
+    background-color: #2e2e2e;
+    padding: 20px;
+    box-sizing: border-box;
+    transition: right 0.3s ease; /* Smooth transition */
+    z-index: 1000; /* Ensure the sidebar is on top */
+    overflow-y: auto; /* Enable vertical scrolling */
+}
+
+#sidebar label {
+    margin-bottom: 10px;
+}
+
+#sidebar input {
+    margin-bottom: 20px;
+}
+
+#sidebar.show {
+    right: 0; /* When active, move into view */
+}
+
+#menu-toggle {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    cursor: pointer;
+    font-size: 24px;
+    z-index: 1001; /* Ensure the toggle button is on top */
+}
+
+/* Main container holding both consoles */
+#main-container {
+    display: flex;
+    width: 100%; /* Use the full width of the screen */
+    height: 100%;
+}
+
+/* Story and Log consoles */
+.console {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 500; /* Consoles should be below the sidebar */
 }
 
 #terminal {
-    width: calc(100% - 200px);
-    height: 100%;
+    background-color: #2a2a2a;
     padding: 10px;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
+    flex-grow: 1;
+    min-width: 0;
+    overflow-x: auto;
 }
 
-#output {
+#log-console {
+    background-color: #3a3a3a;
+    padding: 10px;
+    flex-grow: 1;
+    min-width: 0;
+    overflow-x: auto;
+}
+
+/* Outputs for both consoles */
+.output {
+    flex-grow: 1;
     overflow-y: auto;
     white-space: pre-wrap;
     display: flex;
@@ -27,11 +86,7 @@ body {
     justify-content: flex-start;
 }
 
-#output div {
-    margin-bottom: 5px;
-    text-align: left;
-}
-
+/* Input line for the Story console */
 #input-line {
     display: flex;
     align-items: center;
@@ -57,31 +112,26 @@ body {
     background: rgba(255, 255, 255, 0.3);
 }
 
-#menu-toggle {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    cursor: pointer;
-    font-size: 24px;
+/* Divider between Story and Log consoles */
+#divider {
+    width: 5px;
+    background-color: #555;
+    cursor: ew-resize;
+    position: relative;
+    z-index: 999; /* Ensure the divider is above consoles but below the sidebar */
 }
 
-#sidebar {
-    width: 250px;
+/* Allow resizing the consoles */
+#main-container {
+    display: flex;
     height: 100%;
-    position: fixed;
-    top: 0;
-    right: 0;
-    background-color: #2e2e2e;
-    padding: 20px;
-    box-sizing: border-box;
-    transform: translateX(250px);
-    transition: transform 0.3s ease;
+    position: relative;
 }
 
-#sidebar h2 {
-    margin-top: 0;
-}
-
-#sidebar.show {
-    transform: translateX(0);
+.console {
+    resize: horizontal;
+    overflow: auto;
+    max-width: 100%;
+    min-width: 100px;
+    box-sizing: border-box; /* Ensures padding is included in width calculation */
 }

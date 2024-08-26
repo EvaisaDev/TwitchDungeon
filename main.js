@@ -1,116 +1,32 @@
 document.addEventListener('DOMContentLoaded', async function() {
 
-    /*
-<label for="api-key">OpenAI API Key:</label>
-<div style="display: flex; align-items: center;">
-    <input id="api-key-input" type="password" />
-    <span id="toggle-api-key" class="fas fa-eye-slash" style="margin-left: 2px; cursor: pointer;"></span>
-</div>
-
-<label for="gpt-model-select">GPT Model:</label>
-<input type="text" id="gpt-model-select" placeholder="i.e. gpt-4o" value="gpt-4o-mini"><br><br>
-
-<label for="twitch-channel">Twitch Channel Name:</label>
-<input type="text" id="twitch-channel" placeholder="Enter Twitch Channel Name"><br><br>
-
-<!--Checkbox for allowing streamer to take part in the adventure-->
-<label for="take-turns">Streamer participates:</label>
-<input type="checkbox" id="take-turns" checked="true"><br><br>
-
-<!-- Vote time -->
-<label for="vote-time">Vote Time (seconds):</label>
-<input type="number" id="vote-time" value="30"><br><br>
-
-<!-- Include AI Images -->
-<label for="ai-images">Include AI Images (Experimental):</label>
-<input type="checkbox" id="ai-images" checked="false"><br><br>
-
-<!-- Use Text To Speech -->
-<label for="use-tts">Use Text To Speech:</label>
-<input type="checkbox" id="use-tts" checked="true"><br><br>
-
-<!-- Speakerbot Address -->
-<label for="speakerbot-address">Speakerbot Address:</label>'
-<input type="text" id="speakerbot-address" value="localhost"><br><br>'
-
-<!-- Speakerbot Port -->
-<label for="speakerbot-port">Speakerbot Port:</label>
-<input type="number" id="speakerbot-port" value="7680"><br><br>
-
-<!-- Narrator Voice Alias -->
-<label for="narrator-voice-alias">Narrator Voice Alias:</label>
-<input type="text" id="narrator-voice-alias" value="narrator"><br><br>
-    */
-
-    const inputField = document.getElementById('input');
-    const outputDiv = document.getElementById('output');
-    const terminalDiv = document.getElementById('terminal');
-    const menuToggle = document.getElementById('menu-toggle');
-    const sidebar = document.getElementById('sidebar');
-    const apiKeyInput = document.getElementById('api-key-input');
-    const twitchChannelInput = document.getElementById('twitch-channel');
-    const gptModelSelect = document.getElementById('gpt-model-select');
-    const toggleApiKey = document.getElementById('toggle-api-key');
-    const streamerParticipates = document.getElementById('take-turns');
-    const voteTime = document.getElementById('vote-time');
-    const aiImages = document.getElementById('ai-images');
-    const useTTS = document.getElementById('use-tts');
-    const speakerbotAddress = document.getElementById('speakerbot-address');
-    const speakerbotPort = document.getElementById('speakerbot-port');
-    const narratorVoiceAlias = document.getElementById('narrator-voice-alias');
-
-    let state = "none"
-    let theme = "fantasy"
-
-    let viewerCharacterSelectionFlow = [
-    ]
-    let viewerCharacterSelectionState = 0
+    const elements = {
+        inputField: 'input',
+        outputDiv: 'output-story',
+        outputLog: 'output-log',
+        terminalDiv: 'main-container',
+        menuToggle: 'menu-toggle',
+        apiKeyInput: 'api-key-input',
+        twitchChannelInput: 'twitch-channel',
+        gptModelSelect: 'gpt-model-select',
+        maxWords: 'max-words',
+        toggleApiKey: 'toggle-api-key',
+        streamerParticipates: 'take-turns',
+        voteTime: 'vote-time',
+        aiImages: 'ai-images',
+        useTTS: 'use-tts',
+        speakerbotAddress: 'speakerbot-address',
+        speakerbotPort: 'speakerbot-port',
+        narratorVoiceAlias: 'narrator-voice-alias'
+    };
     
-    let characters = {
-        player: {
-            description: "",
-            name: "Player",
-            inventory: [],
-            status_effects: [],
-            abilities: [],
-            health: 5,
-            max_health: 5,
-            gold: 0,
-            stats: {
-                strength: 0,
-                dexterity: 0,
-                intelligence: 0,
-                charisma: 0,
-                wisdom: 0,
-                constitution: 0,
-            }
-        },
-        twitch_chat: {
-            description: "",
-            name: "Twitch Chat",
-            inventory: [],
-            status_effects: [],
-            abilities: [],
-            health: 5,
-            max_health: 5,
-            gold: 0,
-            stats: {
-                strength: 0,
-                dexterity: 0,
-                intelligence: 0,
-                charisma: 0,
-                wisdom: 0,
-                constitution: 0,
-            }
-        },
+    // Initialize all elements
+    for (let key in elements) {
+        elements[key] = document.getElementById(elements[key]);
     }
-
-    let maximumHistory = 50
-    let history = []
-
-
-
-    const gptBasePrompt = `You are a game master for a text based adventure game. You will not be offensive or vulgar, and you will not break the fourth wall.
+    
+    const promptTemplate = `
+    You are a game master for a text based adventure game. You will not be offensive or vulgar, and you will not break the fourth wall.
     As a game master, you can let players find items to add to their inventory, give them status effects, and describe the world around them.
     In combat, you can let players attack, defend, or use items in their inventory. You can also let them run away or use special abilities.
     If player's health reaches 0, they lose the game.
@@ -134,75 +50,128 @@ document.addEventListener('DOMContentLoaded', async function() {
     '&e': 'color:#FFFF55',
     '&f': 'color:#FFFFFF'
     Make sure to type &f after you are done coloring your text to reset the color to white.
-    Example: "&4Redwood forest&f" will color the text "Redwood forest" red. 
-    `
-
-
-    // try to get api key from local storage
-    let apiKey = localStorage.getItem('twitchdungeon-apiKey');
-    if (apiKey) {
-        apiKeyInput.value = apiKey;
+    Example: "&4Redwood forest&f" will color the text "Redwood forest" red.
+    `;
+    
+    let gptBasePrompt = promptTemplate;
+    
+    // Function to load settings from local storage and apply them
+    function loadSetting(element, storageKey, defaultValue = '', isCheckbox = false) {
+        const storedValue = localStorage.getItem(storageKey);
+        if (storedValue !== null) {
+            if (isCheckbox) {
+                element.checked = storedValue === 'true';
+            } else {
+                element.value = storedValue;
+            }
+        } else {
+            if (isCheckbox) {
+                element.checked = defaultValue;
+            } else {
+                element.value = defaultValue;
+            }
+        }
+        return storedValue || defaultValue;
     }
-
-    let twitchChannel = localStorage.getItem('twitchdungeon-channel');
-    if (twitchChannel) {
-        twitchChannelInput.value = twitchChannel;
+    
+    // Function to save settings to local storage
+    function saveSetting(element, storageKey, isCheckbox = false) {
+        const value = isCheckbox ? element.checked : element.value;
+        localStorage.setItem(storageKey, value);
+        return value;
     }
-
-    // if api key is changed, save it to local storage
-    apiKeyInput.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-apiKey', apiKeyInput.value);
-        apiKey = apiKeyInput.value;
+    
+    // Load initial settings
+    loadSetting(elements.apiKeyInput, 'twitchdungeon-apiKey');
+    loadSetting(elements.twitchChannelInput, 'twitchdungeon-channel');
+    loadSetting(elements.streamerParticipates, 'twitchdungeon-streamer-participates', true, true);
+    loadSetting(elements.voteTime, 'twitchdungeon-vote-time', 30);
+    loadSetting(elements.aiImages, 'twitchdungeon-ai-images', false, true);
+    loadSetting(elements.useTTS, 'twitchdungeon-use-tts', false, true);
+    loadSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address', 'localhost');
+    loadSetting(elements.speakerbotPort, 'twitchdungeon-speakerbot-port', 7580);
+    loadSetting(elements.narratorVoiceAlias, 'twitchdungeon-narrator-voice-alias', '');
+    let maxWordsValue = loadSetting(elements.maxWords, 'twitchdungeon-max-words', 200);
+    gptBasePrompt += `The maximum word count for your responses is ${maxWordsValue}.`;
+    
+    // Add event listeners for saving settings
+    elements.apiKeyInput.addEventListener('input', () => saveSetting(elements.apiKeyInput, 'twitchdungeon-apiKey'));
+    elements.twitchChannelInput.addEventListener('input', () => saveSetting(elements.twitchChannelInput, 'twitchdungeon-channel'));
+    elements.streamerParticipates.addEventListener('input', () => saveSetting(elements.streamerParticipates, 'twitchdungeon-streamer-participates', true));
+    elements.voteTime.addEventListener('input', () => saveSetting(elements.voteTime, 'twitchdungeon-vote-time'));
+    elements.aiImages.addEventListener('input', () => saveSetting(elements.aiImages, 'twitchdungeon-ai-images', true));
+    elements.useTTS.addEventListener('input', () => saveSetting(elements.useTTS, 'twitchdungeon-use-tts', true));
+    elements.speakerbotAddress.addEventListener('input', () => saveSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address'));
+    elements.speakerbotPort.addEventListener('input', () => saveSetting(elements.speakerbotPort, 'twitchdungeon-speakerbot-port'));
+    elements.narratorVoiceAlias.addEventListener('input', () => saveSetting(elements.narratorVoiceAlias, 'twitchdungeon-narrator-voice-alias'));
+    elements.maxWords.addEventListener('input', () => {
+        maxWordsValue = saveSetting(elements.maxWords, 'twitchdungeon-max-words');
+        gptBasePrompt = promptTemplate + `The maximum word count for your responses is ${maxWordsValue}.`;
     });
 
+
+    let gameData = {
+        state: "none",
+        theme: "fantasy",
+        characters: {
+            player: {
+                description: "",
+                name: "Player",
+                inventory: [],
+                status_effects: [],
+                abilities: [],
+                health: 5,
+                max_health: 5,
+                gold: 0,
+                stats: {
+                    strength: 0,
+                    dexterity: 0,
+                    intelligence: 0,
+                    charisma: 0,
+                    wisdom: 0,
+                    constitution: 0,
+                }
+            },
+            twitch_chat: {
+                description: "",
+                name: "Twitch Chat",
+                inventory: [],
+                status_effects: [],
+                abilities: [],
+                health: 5,
+                max_health: 5,
+                gold: 0,
+                stats: {
+                    strength: 0,
+                    dexterity: 0,
+                    intelligence: 0,
+                    charisma: 0,
+                    wisdom: 0,
+                    constitution: 0,
+                }
+            },
+        },
+        viewerCharacterSelectionFlow: [],
+        viewerCharacterSelectionState: 0,
+        history: []
+    }
+
+
+    let maximumHistory = 50
+
+
+
+
     function AddToHistory(content, role){
-        history.push({content: content, role: role})
-        if(history.length > maximumHistory){
-            history.shift()
+        gameData.history.push({content: content, role: role})
+        if(gameData.history.length > maximumHistory){
+            gameData.history.shift()
         }
     }
 
-    // if twitch channel is changed, save it to local storage
-    twitchChannelInput.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-channel', twitchChannelInput.value);
-        twitchChannel = twitchChannelInput.value;
-    });
 
-    // if viewer participation is changed, save it to local storage
-    streamerParticipates.checked = localStorage.getItem('twitchdungeon-streamer-participates') ? localStorage.getItem('twitchdungeon-streamer-participates') == 'true' : true;
-    streamerParticipates.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-streamer-participates', streamerParticipates.checked);
-    });
 
-    voteTime.value = localStorage.getItem('twitchdungeon-vote-time') || 30;
-    voteTime.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-vote-time', voteTime.value);
-    });
 
-    aiImages.checked = localStorage.getItem('twitchdungeon-ai-images') ? localStorage.getItem('twitchdungeon-ai-images') == 'true' : false;
-    aiImages.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-ai-images', aiImages.checked);
-    });
-
-    useTTS.checked = localStorage.getItem('twitchdungeon-use-tts') ? localStorage.getItem('twitchdungeon-use-tts') == 'true' : false;
-    useTTS.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-use-tts', useTTS.checked);
-    });
-
-    speakerbotAddress.value = localStorage.getItem('twitchdungeon-speakerbot-address') || 'localhost';
-    speakerbotAddress.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-speakerbot-address', speakerbotAddress.value);
-    });
-
-    speakerbotPort.value = localStorage.getItem('twitchdungeon-speakerbot-port') || 7580;
-    speakerbotPort.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-speakerbot-port', speakerbotPort.value);
-    });
-
-    narratorVoiceAlias.value = localStorage.getItem('twitchdungeon-narrator-voice-alias') || '';
-    narratorVoiceAlias.addEventListener('input', () => {
-        localStorage.setItem('twitchdungeon-narrator-voice-alias', narratorVoiceAlias.value);
-    });
 
     let activeVote = null
     let viewerVotes = []
@@ -217,7 +186,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
             output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
             activeVoteEntry.innerHTML = parseMinecraftColorCodes(output)
-            outputDiv.scrollTop = outputDiv.scrollHeight;
+            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
         }else{
             let output = ""
             activeVote.forEach((option, index) => {
@@ -225,7 +194,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 output += `${index + 1}) ${option.text}&f\n`
             });
             output += `Vote by typing the number of your choice. You have ${timeLeft} seconds left to vote.`
-            activeVoteEntry = print(output, false, true)
+            activeVoteEntry = writeToTerminal(output, true)
         }
     }
 
@@ -437,13 +406,13 @@ document.addEventListener('DOMContentLoaded', async function() {
             let endpoint = `v1/images/generations`
             const body = {
                 model: "dall-e-2",
-                prompt: `${prompt}, in the style of a pixel art game.`,
+                prompt: `${prompt}, in a painted style fitting a pen & paper RPG artbook.`,
                 size: "256x256",
                 response_format: "b64_json",
                 n: 1,
             };
 
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
             if (response.status === 200) {
                 // read whole stream and get the image.
@@ -467,29 +436,14 @@ document.addEventListener('DOMContentLoaded', async function() {
                             canvas.width = 32;
                             canvas.height = 32;
                             ctx.drawImage(img, 0, 0, 32, 32);
-                        
-                            /*
-
-                            const ascii = imageToMinecraftAscii(ctx, 32, 32);
-                            // split by new line
-                            let lines = ascii.split('\n')
-
-                            // loop through each line and print it
-                            lines.forEach(line => {
-                                print(line, true)
-                            });
-
-                            if(callback){
-                                callback(ascii)
-                            }*/
 
                             // add image to output
                             const imageDiv = document.createElement('div');
                             imageDiv.classList.add('image');
                             imageDiv.appendChild(img);
-                            outputDiv.appendChild(imageDiv);
+                            elements.outputDiv.appendChild(imageDiv);
                             // Scroll to the bottom of the terminal
-                            outputDiv.scrollTop = outputDiv.scrollHeight;
+                            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
 
                             if(callback){
                                 callback()
@@ -536,14 +490,20 @@ document.addEventListener('DOMContentLoaded', async function() {
             // we will turn this into an image generation prompt
             // keep it 50 words or less
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + `The theme of the game is ${theme}. Summarize the scene in 50 words or less, Only describe the scene, do not talk in first person, do not talk about yourself as a chatter, Only include details about the scene itself. Do not ask for the next move, do not give options. This is just a small description of the scene. Make sure the include the theme in your summary.`
-            const body = {
-                model: gptModelSelect.value || 'gpt-4o-mini',
-                messages: [{role: 'system', content: prompt}, {role: 'user', content: text}],
-            };
+            let prompt = `You will be given a part of a story, compress the story to a brief summary of the scene, keep it to 25 - 50 words. Only describe the scene, Do not add anything that directly speaks to the player, Do not add additional story elements.
+            Example:
+            Text: "You find yourself in a lush green clearing surrounded by towering ancient oaks that sway gently in the warm breeze. The smell of damp earth fills the air, mixed with the sweet aroma of blooming wildflowers scattered across the ground. A small, shimmering brook weaves its way through the clearing, its water sparkling under the golden rays of the sun.However, there's an unsettling tension in the atmosphere. Whispers of distant creatures can be heard, and shadows flit among the trees. The ground beneath your feet feels unstable, as if it might reveal secrets buried long ago.In the center of the clearing, there is a strange altar made of smooth stones, adorned with faintly glowing runes that pulse with an unknown energy. It seems to beckon you closer, promising mystical potential or perilous danger.
 
+Before proceeding into this intriguing yet eerie setting, it's time to focus on your journey. Please take a moment to describe your character, including their race, appearance, and any unique traits or abilities they might possess."
+            Output: "In a lush clearing with an eerie tension, a stone altar with glowing runes hints at danger or mystical opportunity amidst ancient oaks."
+            `
+            const body = {
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                messages: [{role: 'system', content: prompt}, {role: "user", content: text}],
+                max_tokens: 100
+            };
             
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
             if (response.status === 200) {
                 let output = "";
@@ -568,7 +528,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
             ws.send('PASS SCHMOOPIIE');
             ws.send('NICK justinfan12345');
-            ws.send('JOIN #' + twitchChannel);
+            ws.send('JOIN #' + elements.twitchChannelInput.value);
 
             // ping 
         };
@@ -618,7 +578,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         // connect to speakerbot using websockets
-        const ws = new WebSocket(`ws://${speakerbotAddress.value}:${speakerbotPort.value}`);
+        const ws = new WebSocket(`ws://${elements.speakerbotAddress.value}:${elements.speakerbotPort.value}`);
         ws.onopen = function open() {
             speakerbot = ws
         };
@@ -632,7 +592,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     async function TryToSpeak(text){
-        if (!useTTS.checked) {
+        if (!elements.useTTS.checked) {
             return;
         }
         /*
@@ -656,7 +616,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             sentence = sentence.replace(/[.!?]+/g, "")
 
             if(speakerbot && speakerbot.readyState == WebSocket.OPEN){
-                speakerbot.send(JSON.stringify({id: "1", request: "Speak", voice: narratorVoiceAlias.value, message: sentence.trim(), badWordFilter: true}))
+                speakerbot.send(JSON.stringify({id: "1", request: "Speak", voice: elements.narratorVoiceAlias.value, message: sentence.trim(), badWordFilter: true}))
             }else if(!speakerbot || speakerbot.readyState == WebSocket.CLOSED || speakerbot.readyState == WebSocket.CLOSING){
                 ConnectToSpeakerbot()
             }
@@ -665,7 +625,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
 
-    function print(text, zeroWidth = false, skipSpeaking = false) {
+    function writeToTerminal(text, zeroWidth = false, skipSpeaking = false) {
         // Return early if text is nil or undefined
         if (!text) {
             return;
@@ -673,9 +633,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         const outputLine = document.createElement('div');
         outputLine.innerHTML = parseMinecraftColorCodes(text);
-        outputDiv.appendChild(outputLine);
+        elements.outputDiv.appendChild(outputLine);
         // Scroll to the bottom of the terminal
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
 
         if (zeroWidth) {
             // set margins and paddings on top and bottom to 0
@@ -690,13 +650,43 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     
         // Scroll to the bottom of the terminal
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
         return outputLine;
     }
 
+    function writeToLog(text, skipSpeaking = false) {
+        const outputLine = document.createElement('div');
+        outputLine.innerHTML = parseMinecraftColorCodes(text);
+        elements.outputLog.appendChild(outputLine);
+        // Scroll to the bottom of the terminal
+        elements.outputLog.scrollTop = elements.outputLog.scrollHeight;
+
+        if(!skipSpeaking){
+            TryToSpeak(text)
+        }
+    }
+
+    function writeToLog(text, skipSpeaking = false) {
+        const outputLine = document.createElement('div');
+        outputLine.innerHTML = parseMinecraftColorCodes(text);
+        elements.outputLog.appendChild(outputLine);
+        // Scroll to the bottom of the terminal
+        elements.outputLog.scrollTop = elements.outputLog.scrollHeight;
+
+        if(!skipSpeaking){
+            TryToSpeak(text)
+        }
+    }
+
+
+
+
+
     function clear() {
-        outputDiv.innerHTML = '';
-        outputDiv.scrollTop = outputDiv.scrollHeight;
+        elements.outputDiv.innerHTML = '';
+        elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
+        elements.outputLog.innerHTML = '';
+        elements.outputLog.scrollTop = elements.outputLog.scrollHeight;
     }
     
     async function HandleStream(stream, callback, done) {
@@ -727,10 +717,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     let continueCallback = null
 
     function toggleInput(enabled) {
-        inputField.disabled = !enabled;
-        inputField.placeholder = enabled ? '' : 'Waiting for API response...';
+        elements.inputField.disabled = !enabled;
+        elements.inputField.placeholder = enabled ? '' : 'Waiting for API response...';
         if(continueCallback != null){
-            inputField.placeholder = 'Press any key to continue...';
+            elements.inputField.placeholder = 'Press any key to continue...';
         }
     }
 
@@ -745,50 +735,48 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     }
 
-    menuToggle.addEventListener('click', () => {
-        sidebar.classList.toggle('show');
-    });
 
-    toggleApiKey.addEventListener('click', () => {
+    elements.toggleApiKey.addEventListener('click', () => {
         apiKeyVisible = !apiKeyVisible;
         if (!apiKeyVisible) {
-            apiKeyInput.type = 'password';
-            toggleApiKey.classList.remove('fa-eye');
-            toggleApiKey.classList.add('fa-eye-slash');
+            elements.apiKeyInput.type = 'password';
+            elements.toggleApiKey.classList.remove('fa-eye');
+            elements.toggleApiKey.classList.add('fa-eye-slash');
         } else {
-            apiKeyInput.type = 'text';
-            toggleApiKey.classList.remove('fa-eye-slash');
-            toggleApiKey.classList.add('fa-eye');
+            elements.apiKeyInput.type = 'text';
+            elements.toggleApiKey.classList.remove('fa-eye-slash');
+            elements.toggleApiKey.classList.add('fa-eye');
         }
     });
-    terminalDiv.addEventListener('click', () => {
-        inputField.focus();
-    });
+    
+    /*elements.terminalDiv.addEventListener('click', () => {
+        elements.inputField.focus();
+    });*/
 
-    inputField.addEventListener('keydown', function(event) {
+    elements.inputField.addEventListener('keydown', function(event) {
         if(continueCallback){
             // if any key is pressed, call the continue callback
 
             // clear the input field
-            inputField.value = ''
+            elements.inputField.value = ''
             toggleInput(false)
             // clear again after 1 second
             setTimeout(() => {
-                inputField.value = ''
+                elements.inputField.value = ''
                 continueCallback()
                 continueCallback = null
-                inputField.placeholder = ''
+                elements.inputField.placeholder = ''
             }, 100)
             return
         }
         if (event.key === 'Enter') {
-            const command = inputField.value;
-            inputField.value = ''; // Clear input field
+            const command = elements.inputField.value;
+            elements.inputField.value = ''; // Clear input field
             // Create a new line with the command and append it to the output
             const commandLine = document.createElement('div');
             commandLine.innerHTML = `> ${parseMinecraftColorCodes(command)}`;
-            outputDiv.scrollTop = outputDiv.scrollHeight;
-            outputDiv.appendChild(commandLine);
+            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
+            elements.outputDiv.appendChild(commandLine);
             // Execute the command (simulate execution)
             executeCommand(command);
         }
@@ -800,12 +788,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     async function checkSettings() {
-        if (!apiKeyInput.value) {
-            print('Please enter your OpenAI API key in the sidebar menu, then type "start" to begin.');
+        if (!elements.apiKeyInput.value) {
+            writeToTerminal('Please enter your OpenAI API key in the sidebar menu, then type "start" to begin.', true);
             return false
         }else{
             // make a tiny api request to check if the api key is valid
-            const model = gptModelSelect.value || 'gpt-4o-mini';
+            const model = elements.gptModelSelect.value || 'gpt-4o-mini';
     
             let endpoint = `v1/chat/completions`
             // send gpt chat request and stream the response to the terminal, every time we receive a chunk
@@ -815,21 +803,21 @@ document.addEventListener('DOMContentLoaded', async function() {
                 max_tokens: 20
             };
     
-            const response = await GPTRequest(endpoint, apiKeyInput.value, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
     
             if (response.status === 200) {
                 // clear the terminal
                 clear();
-                print("Welcome adventurer, please choose a theme for your adventure: ")
-                state = "theme"
+                writeToTerminal("Welcome adventurer, please choose a theme for your adventure: ")
+                gameData.state = "theme"
                 ConnectToSpeakerbot()
                 // if twitch channel is set, connect to twitch
-                if(twitchChannel && twitchChannel.length > 0){
+                if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
                     ConnectToTwitch()
                 }
                 return true;
             } else {
-                print('Your API key is invalid, does not have access to the model, or you have exceeded your quota. Please update your API key then type "start" to begin.');
+                writeToTerminal('Your API key is invalid, does not have access to the model, or you have exceeded your quota. Please update your API key then type "start" to begin.');
                 return false;
             }
             
@@ -873,14 +861,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         `
 
         const body = {
-            model: gptModelSelect.value || 'gpt-4o-mini',
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: 'user', content: GetPlayerCharacterInfo(isViewer)}, {role: 'user', content: text}],
             response_format: {
                 type: "json_object",
             },
         };
 
-        const response = await GPTRequest(endpoint, apiKey, body);
+        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
             let output = "";
@@ -907,19 +895,19 @@ document.addEventListener('DOMContentLoaded', async function() {
                 items.forEach(item => {
                     if(item.action == "gained"){
                         if(isViewer){
-                            characters.twitch_chat.inventory.push({name: item.name, description: item.description})
-                            print(`${characters.twitch_chat.name} has gained a ${item.name} - ${item.description}`, false, true)
+                            gameData.characters.twitch_chat.inventory.push({name: item.name, description: item.description})
+                            writeToLog(`${gameData.characters.twitch_chat.name} has gained a ${item.name} - ${item.description}`, true)
                         }else{
-                            characters.player.inventory.push({name: item.name, description: item.description})
-                            print(`${characters.player.name} has gained a ${item.name} - ${item.description}.`, false, true)
+                            gameData.characters.player.inventory.push({name: item.name, description: item.description})
+                            writeToLog(`${gameData.characters.player.name} has gained a ${item.name} - ${item.description}.`, true)
                         }
                     }else if(item.action == "lost"){
                         if(isViewer){
-                            characters.twitch_chat.inventory = characters.twitch_chat.inventory.filter(i => i != item.name)
-                            print(`${characters.twitch_chat.name} has lost a ${item.name} - ${item.description}.`, false, true)
+                            gameData.characters.twitch_chat.inventory = gameData.characters.twitch_chat.inventory.filter(i => i != item.name)
+                            writeToLog(`${gameData.characters.twitch_chat.name} has lost a ${item.name} - ${item.description}.`, true)
                         }else{
-                            characters.player.inventory = characters.player.inventory.filter(i => i != item.name)
-                            print(`${characters.player.name} has lost a ${item.name} - ${item.description}.`, false, true)
+                            gameData.characters.player.inventory = gameData.characters.player.inventory.filter(i => i != item.name)
+                            writeToLog(`${gameData.characters.player.name} has lost a ${item.name} - ${item.description}.`, true)
                         }
                     }
                 });
@@ -927,93 +915,93 @@ document.addEventListener('DOMContentLoaded', async function() {
                 statusEffects.forEach(statusEffect => {
                     if(statusEffect.action == "gained"){
                         if(isViewer){
-                            characters.twitch_chat.status_effects.push({name: statusEffect.name, description: statusEffect.description})
-                            print(`${characters.twitch_chat.name} gained status effect ${statusEffect.name} - ${statusEffect.description}.`, false, true)
+                            gameData.characters.twitch_chat.status_effects.push({name: statusEffect.name, description: statusEffect.description})
+                            writeToLog(`${gameData.characters.twitch_chat.name} gained status effect ${statusEffect.name} - ${statusEffect.description}.`, true)
                         }else{
-                            characters.player.status_effects.push({name: statusEffect.name, description: statusEffect.description})
-                            print(`${characters.player.name} gained status effect ${statusEffect.name} - ${statusEffect.description}.`, false, true)
+                            gameData.characters.player.status_effects.push({name: statusEffect.name, description: statusEffect.description})
+                            writeToLog(`${gameData.characters.player.name} gained status effect ${statusEffect.name} - ${statusEffect.description}.`, true)
                         }
                     }else if(statusEffect.action == "lost"){
                         if(isViewer){
-                            characters.twitch_chat.status_effects = characters.twitch_chat.status_effects.filter(i => i != statusEffect.name)
-                            print(`${characters.twitch_chat.name} lost status effect ${statusEffect.name}.`, false, true)
+                            gameData.characters.twitch_chat.status_effects = gameData.characters.twitch_chat.status_effects.filter(i => i != statusEffect.name)
+                            writeToLog(`${gameData.characters.twitch_chat.name} lost status effect ${statusEffect.name}.`, true)
                         }else{
-                            characters.player.status_effects = characters.player.status_effects.filter(i => i != statusEffect.name)
-                            print(`${characters.player.name} lost status effect ${statusEffect.name}.`, false, true)
+                            gameData.characters.player.status_effects = gameData.characters.player.status_effects.filter(i => i != statusEffect.name)
+                            writeToLog(`${gameData.characters.player.name} lost status effect ${statusEffect.name}.`, true)
                         }
                     }
                 });
 
                 if(health != 0){
                     if(isViewer){
-                        characters.twitch_chat.health += health
-                        Math.min(characters.twitch_chat.health, characters.twitch_chat.max_health)
-                        print(`${characters.twitch_chat.name} ${health > 0 ? "gained" : "lost"} ${Math.abs(health)} health points.`, false, true)
+                        gameData.characters.twitch_chat.health += health
+                        Math.min(gameData.characters.twitch_chat.health, gameData.characters.twitch_chat.max_health)
+                        writeToLog(`${gameData.characters.twitch_chat.name} ${health > 0 ? "gained" : "lost"} ${Math.abs(health)} health points.`, true)
 
-                        if(characters.twitch_chat.health <= 0){
-                            print("-------------------------", false, true)
-                            print(`${characters.twitch_chat.name} has died. Game over.`)
-                            print("You can start a new game by refreshing the page.", false, true)
-                            state = "none"
+                        if(gameData.characters.twitch_chat.health <= 0){
+                            writeToTerminal("-------------------------", true)
+                            writeToTerminal(`${gameData.characters.twitch_chat.name} has died. Game over.`)
+                            writeToTerminal("You can start a new game by refreshing the page.", true)
+                            gameData.state = "none"
                         }
                     }else{
-                        characters.player.health += health
-                        Math.min(characters.player.health, characters.player.max_health)
-                        print(`${characters.player.name} ${health > 0 ? "gained" : "lost"} ${Math.abs(health)} health points.`)
+                        gameData.characters.player.health += health
+                        Math.min(gameData.characters.player.health, gameData.characters.player.max_health)
+                        writeToLog(`${gameData.characters.player.name} ${health > 0 ? "gained" : "lost"} ${Math.abs(health)} health points.`)
 
-                        if(characters.player.health <= 0){
-                            print("-------------------------", false, true)
-                            print(`${characters.player.name} has died. Game over.`)
-                            print("You can start a new game by refreshing the page.", false, true)
-                            state = "none"
+                        if(gameData.characters.player.health <= 0){
+                            writeToTerminal("-------------------------", true)
+                            writeToTerminal(`${gameData.characters.player.name} has died. Game over.`)
+                            writeToTerminal("You can start a new game by refreshing the page.", true)
+                            gameData.state = "none"
                         }
                     }
                 }
 
                 if(max_health != 0){
                     if(isViewer){
-                        characters.twitch_chat.max_health += max_health
-                        print(`${characters.twitch_chat.name} ${max_health > 0 ? "gained" : "lost"} ${Math.abs(max_health)} max health points.`, false, true)
+                        gameData.characters.twitch_chat.max_health += max_health
+                        writeToLog(`${gameData.characters.twitch_chat.name} ${max_health > 0 ? "gained" : "lost"} ${Math.abs(max_health)} max health points.`, true)
 
                         // make sure health does not exceed max health
-                        characters.twitch_chat.health = Math.min(characters.twitch_chat.health, characters.twitch_chat.max_health)
+                        gameData.characters.twitch_chat.health = Math.min(gameData.characters.twitch_chat.health, gameData.characters.twitch_chat.max_health)
 
                         // if health is 0, the player dies
-                        if(characters.twitch_chat.health <= 0){
-                            print("-------------------------", false, true)
-                            print(`${characters.twitch_chat.name} has died. Game over.`)
-                            print("You can start a new game by refreshing the page.", false, true)
-                            state = "none"
+                        if(gameData.characters.twitch_chat.health <= 0){
+                            writeToTerminal("-------------------------", true)
+                            writeToTerminal(`${gameData.characters.twitch_chat.name} has died. Game over.`)
+                            writeToTerminal("You can start a new game by refreshing the page.", true)
+                            gameData.state = "none"
                         }
                     }else{
-                        characters.player.max_health += max_health
-                        print(`${characters.player.name} ${max_health > 0 ? "gained" : "lost"} ${Math.abs(max_health)} max health points.`, false, true)
+                        gameData.characters.player.max_health += max_health
+                        writeToLog(`${gameData.characters.player.name} ${max_health > 0 ? "gained" : "lost"} ${Math.abs(max_health)} max health points.`, true)
 
                         // make sure health does not exceed max health
-                        characters.player.health = Math.min(characters.player.health, characters.player.max_health)
+                        gameData.characters.player.health = Math.min(gameData.characters.player.health, gameData.characters.player.max_health)
 
                         // if health is 0, the player dies
-                        if(characters.player.health <= 0){
-                            print("-------------------------", false, true)
-                            print(`${characters.player.name} has died. Game over.`)
-                            print("You can start a new game by refreshing the page.", false, true)
-                            state = "none"
+                        if(gameData.characters.player.health <= 0){
+                            writeToTerminal("-------------------------", true)
+                            writeToTerminal(`${gameData.characters.player.name} has died. Game over.`)
+                            writeToTerminal("You can start a new game by refreshing the page.", true)
+                            gameData.state = "none"
                         }
                     }
                 }
 
                 if(gold != 0){
                     if(isViewer){
-                        characters.twitch_chat.gold += gold
+                        gameData.characters.twitch_chat.gold += gold
 
-                        characters.twitch_chat.gold = Math.max(characters.twitch_chat.gold, 0)
-                        print(`${characters.twitch_chat.name} &6${gold > 0 ? "gained" : "lost"} ${Math.abs(gold)} gold.&f`, false, true)
+                        gameData.characters.twitch_chat.gold = Math.max(gameData.characters.twitch_chat.gold, 0)
+                        writeToLog(`${gameData.characters.twitch_chat.name} &6${gold > 0 ? "gained" : "lost"} ${Math.abs(gold)} gold.&f`, true)
                     }else{
-                        characters.player.gold += gold
+                        gameData.characters.player.gold += gold
 
-                        characters.player.gold = Math.max(characters.player.gold, 0)
+                        gameData.characters.player.gold = Math.max(gameData.characters.player.gold, 0)
                         
-                        print(`${characters.player.name} &6${gold > 0 ? "gained" : "lost"} ${Math.abs(gold)} gold.&f`, false, true)
+                        writeToLog(`${gameData.characters.player.name} &6${gold > 0 ? "gained" : "lost"} ${Math.abs(gold)} gold.&f`, true)
                     }
                 }
 
@@ -1025,18 +1013,18 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                             if(isViewer){
                                 // check if the stat exists, if not, create it
-                                if(!characters.twitch_chat.stats[key]){
-                                    characters.twitch_chat.stats[key] = 0
+                                if(!gameData.characters.twitch_chat.stats[key]){
+                                    gameData.characters.twitch_chat.stats[key] = 0
                                 }
-                                characters.twitch_chat.stats[key] += value
-                                print(`${characters.twitch_chat.name} ${value > 0 ? "gained" : "lost"} ${Math.abs(value)} ${key}.`, false, true)
+                                gameData.characters.twitch_chat.stats[key] += value
+                                writeToLog(`${gameData.characters.twitch_chat.name} ${value > 0 ? "gained" : "lost"} ${Math.abs(value)} ${key}.`, true)
                             }else{
                                 // check if the stat exists, if not, create it
-                                if(!characters.player.stats[key]){
-                                    characters.player.stats[key] = 0
+                                if(!gameData.characters.player.stats[key]){
+                                    gameData.characters.player.stats[key] = 0
                                 }
-                                characters.player.stats[key] += value
-                                print(`${characters.player.name} ${value > 0 ? "gained" : "lost"} ${Math.abs(value)} ${key}.`, false, true)
+                                gameData.characters.player.stats[key] += value
+                                writeToLog(`${gameData.characters.player.name} ${value > 0 ? "gained" : "lost"} ${Math.abs(value)} ${key}.`, true)
                             }
                         }
                     }
@@ -1047,19 +1035,19 @@ document.addEventListener('DOMContentLoaded', async function() {
                 abilities.forEach(ability => {
                     if(ability.action == "gained"){
                         if(isViewer){
-                            characters.twitch_chat.abilities.push({name: ability.name, description: ability.description})
-                            print(`${characters.twitch_chat.name} gained a new ability, ${ability.name} - ${ability.description}.`, false, true)
+                            gameData.characters.twitch_chat.abilities.push({name: ability.name, description: ability.description})
+                            writeToLog(`${gameData.characters.twitch_chat.name} gained a new ability, ${ability.name} - ${ability.description}.`, true)
                         }else{
-                            characters.player.abilities.push({name: ability.name, description: ability.description})
-                            print(`${characters.player.name} gained a new ability, ${ability.name} - ${ability.description}.`, false, true)
+                            gameData.characters.player.abilities.push({name: ability.name, description: ability.description})
+                            writeToLog(`${gameData.characters.player.name} gained a new ability, ${ability.name} - ${ability.description}.`, true)
                         }
                     }else if(ability.action == "lost"){
                         if(isViewer){
-                            characters.twitch_chat.abilities = characters.twitch_chat.abilities.filter(i => i != ability.name)
-                            print(`${characters.twitch_chat.name} lost the ability ${ability.name}.`, false, true)
+                            gameData.characters.twitch_chat.abilities = gameData.characters.twitch_chat.abilities.filter(i => i != ability.name)
+                            writeToLog(`${gameData.characters.twitch_chat.name} lost the ability ${ability.name}.`, true)
                         }else{
-                            characters.player.abilities = characters.player.abilities.filter(i => i != ability.name)
-                            print(`${characters.player.name} lost the ability ${ability.name}.`, false, true)
+                            gameData.characters.player.abilities = gameData.characters.player.abilities.filter(i => i != ability.name)
+                            writeToLog(`${gameData.characters.player.name} lost the ability ${ability.name}.`, true)
                         }
                     }
                 });
@@ -1078,24 +1066,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         // return a string containing the player's character info, such as name, inventory, and status effects
         let info = ""
         if(isViewer){
-            let name = characters.twitch_chat.name
-            let description = characters.twitch_chat.description
-            let health = characters.twitch_chat.health || 5
-            let max_health = characters.twitch_chat.max_health || 5
+            let name = gameData.characters.twitch_chat.name
+            let description = gameData.characters.twitch_chat.description
+            let health = gameData.characters.twitch_chat.health || 5
+            let max_health = gameData.characters.twitch_chat.max_health || 5
 
             let stats = ""
             stats += `HP: ${health}/${max_health}\n`
             // loop through stats key value pairs
-            for (const [key, value] of Object.entries(characters.twitch_chat.stats)) {
+            for (const [key, value] of Object.entries(gameData.characters.twitch_chat.stats)) {
                 stats += `${key}: ${value}\n`
             }
 
             let inventory = ""
-            characters.twitch_chat.inventory.forEach(item => {
+            gameData.characters.twitch_chat.inventory.forEach(item => {
                 inventory += `${item.name} - ${item.description}\n`
             });
 
-            let gold = characters.twitch_chat.gold || 0
+            let gold = gameData.characters.twitch_chat.gold || 0
 
             if(gold > 0){
                 inventory += `&6${gold} gold&f\n`
@@ -1106,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             let statusEffects = ""
-            characters.twitch_chat.status_effects.forEach(statusEffect => {
+            gameData.characters.twitch_chat.status_effects.forEach(statusEffect => {
                 statusEffects += `${statusEffect.name} - ${statusEffect.description}\n`
             });
             if(statusEffects.length == 0){
@@ -1114,7 +1102,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             let abilities = ""
-            characters.twitch_chat.abilities.forEach(ability => {
+            gameData.characters.twitch_chat.abilities.forEach(ability => {
                 abilities += `${ability.name} - ${ability.description}\n`
             });
             if(abilities.length == 0){
@@ -1124,22 +1112,22 @@ document.addEventListener('DOMContentLoaded', async function() {
             info = `${name} - ${description}\n\nStats:\n${stats}\nInventory:\n${inventory}\nStatus Effects:\n${statusEffects}\n\nAbilities:\n${abilities}`
 
         }else{
-            let name = characters.player.name
-            let description = characters.player.description
-            let health = characters.player.health || 5
-            let max_health = characters.player.max_health || 5
+            let name = gameData.characters.player.name
+            let description = gameData.characters.player.description
+            let health = gameData.characters.player.health || 5
+            let max_health = gameData.characters.player.max_health || 5
 
             let stats = ""
             stats += `HP: ${health}/${max_health}\n`
             // loop through stats key value pairs
-            for (const [key, value] of Object.entries(characters.player.stats)) {
+            for (const [key, value] of Object.entries(gameData.characters.player.stats)) {
                 stats += `${key}: ${value}\n`
             }
 
-            let gold = characters.player.gold || 0
+            let gold = gameData.characters.player.gold || 0
 
             let inventory = ""
-            characters.player.inventory.forEach(item => {
+            gameData.characters.player.inventory.forEach(item => {
                 inventory += `${item.name} - ${item.description}\n`
             });
 
@@ -1152,7 +1140,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             let statusEffects = ""
-            characters.player.status_effects.forEach(statusEffect => {
+            gameData.characters.player.status_effects.forEach(statusEffect => {
                 statusEffects += `${statusEffect.name} - ${statusEffect.description}\n`
             });
             if(statusEffects.length == 0){
@@ -1160,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             let abilities = ""
-            characters.player.abilities.forEach(ability => {
+            gameData.characters.player.abilities.forEach(ability => {
                 abilities += `${ability.name} - ${ability.description}\n`
             });
             if(abilities.length == 0){
@@ -1175,7 +1163,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     async function compressAndAddToHistory(text, role){
-        // ask the AI to compress the text to the most important parts, then add it to the history. make sure it keeps it to roughly 50 - 100 words.
+        // ask the AI to compress the text to the most important parts, then add it to the gameData.history. make sure it keeps it to roughly 50 - 100 words.
         // make sure to use a promise to do so
         console.log("Compressing text: " + cleanText(text))
         return new Promise(async (resolve, reject) => {
@@ -1188,12 +1176,12 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
             Output: "In a verdant clearing surrounded by ancient oaks, a shimmering brook flows under the sun's golden rays. The air is filled with the scent of damp earth and blooming wildflowers, but an unsettling tension pervades the atmosphere. Shadows move among the trees, and the ground feels unstable. At the clearing's center stands an altar made of smooth stones, adorned with glowing runes that pulse with mysterious energy, hinting at potential danger or mystical opportunity."
             `
             const body = {
-                model: gptModelSelect.value || 'gpt-4o-mini',
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
                 messages: [{role: 'system', content: prompt}, {role: role, content: text}],
                 max_tokens: 200
             };
 
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
             if (response.status === 200) {
                 let output = "";
@@ -1205,7 +1193,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                         // parse json
                         let data = JSON.parse(output)
                         let compressed = data.choices[0].message.content
-                        // add the compressed text to the history
+                        // add the compressed text to the gameData.history
                         AddToHistory(compressed, role)
                         console.log("Added to history: " + compressed)
                         resolve()
@@ -1224,13 +1212,13 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
 
     async function runGameLoop(){
         // if viewer turn, generate things they can vote to do next.
-        if(state == "viewer_turn"){
+        if(gameData.state == "viewer_turn"){
             toggleInput(false)
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${theme}. You are generating vote options for the player's next move. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options.`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's next move. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`
             const body = {
-                model: gptModelSelect.value || 'gpt-4o-mini',
-                messages: [{role: 'system', content: prompt}, ...history, {role: 'user', content: "generate the options"}],
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: "generate the options"}],
                 response_format: {
                     type: "json_schema",
                     json_schema: {
@@ -1255,7 +1243,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
             };
 
             
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
             if (response.status === 200) {
                 let output = "";
@@ -1272,36 +1260,39 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
     
                     let voteOptions = []
                     options.options.forEach(option => {
+                        // if option starts with a numbering, remove it
+                        // such as 1. Go North
+                        option = option.replace(/^\d+\.\s*/, "")
                         voteOptions.push({text: option.trim()})
                     });
 
-                    print("-------------------------", false, true)
-                    print(`Viewers, please vote for the next move.`)
+                    writeToTerminal("-------------------------", true)
+                    writeToTerminal(`Viewers, please vote for the next move.`)
                 
                     toggleInput(false)
                     viewerVotes = []
                     
-                    StartTwitchVote(voteOptions, parseInt(voteTime.value), async (winner) => {
-                        print(`${characters.twitch_chat.name} decides to ${winner.text}`)
+                    StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), async (winner) => {
+                        writeToTerminal(`${gameData.characters.twitch_chat.name} decides to ${winner.text}`)
 
-                        print("-------------------------", false, true)
+                        writeToTerminal("-------------------------", true)
                         
                         // generate the AI response to the player's move
                         let endpoint = `v1/chat/completions`
-                        let prompt = gptBasePrompt + `The theme of the game is ${theme}. Please respond to ${characters.twitch_chat.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move.  Do not display their stats in your response.`
+                        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.twitch_chat.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move.  Do not display their stats in your response.`
                         
                         
                         
                         const body = {
-                            model: gptModelSelect.value || 'gpt-4o-mini',
-                            messages: [{role: 'system', content: prompt}, ...history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${characters.twitch_chat.name} decides to ${winner.text}`}],
+                            model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                            messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.twitch_chat.name} decides to ${winner.text}`}],
                             stream: true,
                         };
 
-                        compressAndAddToHistory( `${characters.twitch_chat.name} decides to ${winner.text}`, "user")
+                        compressAndAddToHistory( `${gameData.characters.twitch_chat.name} decides to ${winner.text}`, "user")
 
                         toggleInput(false)
-                        const response = await GPTRequest(endpoint, apiKey, body);
+                        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
                         if (response.status === 200) {
                             let output = "";
@@ -1341,7 +1332,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
 
                             }, async () => {
                                 toggleInput(false)
-                                if(aiImages.checked){
+                                if(elements.aiImages.checked){
                                     await asyncGenerateImage(output)
                                 }
                                 toggleInput(true)
@@ -1349,23 +1340,23 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                                 
                  
                                 compressAndAddToHistory( output, "assistant")
-                                print(output)
-                                print("-------------------------", false, true)
+                                writeToTerminal(output)
+                                writeToTerminal("-------------------------", true)
 
                                 waitForKeypress(async () => {
                                     toggleInput(false)
                                     checkForChanges(output, true, () => {
-                                        print("-------------------------", false, true)
+                                        writeToTerminal("-------------------------", true)
                                         // check if the streamer is participating
-                                        if(streamerParticipates.checked){
+                                        if(elements.streamerParticipates.checked){
                                             // tell the streamer it's their turn
-                                            print(`Streamer, it's your turn. Please type your move.`)
-                                            state = "streamer_turn"
+                                            writeToTerminal(`Streamer, it's your turn. Please type your move.`)
+                                            gameData.state = "streamer_turn"
                                             toggleInput(true)
                                         }else
                                         {
-                                            print("Player, please choose your next move by typing anything, such as 'look around' or 'go north'.")
-                                            state = "viewer_turn"
+                                            writeToTerminal("Player, please choose your next move by typing anything, such as 'look around' or 'go north'.")
+                                            gameData.state = "viewer_turn"
                                             runGameLoop()
                                         }
 
@@ -1385,15 +1376,15 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
     }
 
     async function startViewerCharacterSelection(prunedHistory){
-        // if prunedHistory is not set, set it to the history
+        // if prunedHistory is not set, set it to the gameData.history
         if(!prunedHistory){
-            prunedHistory = [...history]
+            prunedHistory = [...gameData.history]
 
             // remove last entry
             prunedHistory.pop()
         }
 
-        // generate viewerCharacterSelectionFlow options using AI
+        // generate gameData.viewerCharacterSelectionFlow options using AI
         /*
         "Race",
         "Class",
@@ -1402,7 +1393,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         "Name",
         */
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + `The theme of the game is ${theme}. You are generating the character creation flow, Please provide a list of character selection options to go through, based on the theme. do not add additional story info, ONLY reply with the options.
+        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. You are generating the character creation flow, Please provide a list of character selection options to go through, based on the theme. do not add additional story info, ONLY reply with the options.
         Examples:
         Theme: Fantasy
         Output: ["Race", "Class", "Background", "Alignment"]
@@ -1411,7 +1402,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         `
 
         const body = {
-            model: gptModelSelect.value || 'gpt-4o-mini',
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: "generate the character selection flow"}],
             response_format: {
                 type: "json_schema",
@@ -1437,7 +1428,7 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         };
 
 
-        const response = await GPTRequest(endpoint, apiKey, body);
+        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
             let output = "";
@@ -1452,14 +1443,14 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
                 let data = JSON.parse(json)
                 let flow = JSON.parse(data.choices[0].message.content);
 
-                viewerCharacterSelectionFlow = flow.flow
+                gameData.viewerCharacterSelectionFlow = flow.flow
 
-                // if viewerCharacterSelectionFlow does not contain "name", add it
-                if(!viewerCharacterSelectionFlow.includes("Name") && !viewerCharacterSelectionFlow.includes("name")){
-                    viewerCharacterSelectionFlow.push("Name")
+                // if gameData.viewerCharacterSelectionFlow does not contain "name", add it
+                if(!gameData.viewerCharacterSelectionFlow.includes("Name") && !gameData.viewerCharacterSelectionFlow.includes("name")){
+                    gameData.viewerCharacterSelectionFlow.push("Name")
                 }
 
-                viewerCharacterSelectionState = 0
+                gameData.viewerCharacterSelectionState = 0
                 viewerCharacterSelection(prunedHistory)
         
             });
@@ -1472,9 +1463,9 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         // leave out any details such as items and things like that.
         // use AI to generate the summary
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + `The theme of the game is ${theme}. Summarize the given character in 50 words or less, leave out any story details, and items. Only include details about the character itself. DO NOT INCLUDE ITEMS OR STORY DETAILS, Do not ask for the next move, do not give options. This is just a small description of the character.`
+        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Summarize the given character in 50 words or less, leave out any story details, and items. Only include details about the character itself. DO NOT INCLUDE ITEMS OR STORY DETAILS, Do not ask for the next move, do not give options. This is just a small description of the character.`
         const body = {
-            model: gptModelSelect.value || 'gpt-4o-mini',
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt},{role: 'user', content: `Your character, **Iron Claws**, is a cunning old cat with sharp wit and quicker reflexes. As a rogue, she lurks in the shadows, her agility and keen perception allowing her to navigate the most dangerous of situations. Her prized iron claws are not just for show; they are deadly weapons, honed through years of experience.
 
 Iron Claws has a wiry build, with matted fur that hints at her age, but she carries herself with an air of confidence. Her emerald-green eyes glint with mischief and intelligence, always scanning for potential threats and opportunities alike. While she may have a short temper, fueled by her frustration with less capable companions, her heart remains loyal to those who earn her trust.
@@ -1490,7 +1481,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
             stream: true,
         };
 
-        const response = await GPTRequest(endpoint, apiKey, body);
+        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
             let output = "";
@@ -1530,9 +1521,9 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
             }, () => {
                 if(isViewer){
-                    characters.twitch_chat.description = output
+                    gameData.characters.twitch_chat.description = output
                 }else{
-                    characters.player.description = output
+                    gameData.characters.player.description = output
                 }
             });
         }
@@ -1546,7 +1537,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
         let prompt = gptBasePrompt + `You are determining the character's stats based on the provided text. Please provide a short description (50 words or less), health points, inventory, gold, status effects, and abilities. Do not add additional story info. also choose the character's max health points, and the following stats: strength, dexterity, constitution, intelligence, wisdom, and charisma, based on the character description.`
         
         const body = {
-            model: gptModelSelect.value || 'gpt-4o-mini',
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: 'user', content: text}],
             response_format: {
                 type: "json_schema",
@@ -1643,7 +1634,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
             },
         };
         
-        const response = await GPTRequest(endpoint, apiKey, body);
+        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
             let output = "";
@@ -1661,14 +1652,14 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                 console.log(data)
 
                 if(isViewer){
-                    characters.twitch_chat.description = data.description
-                    characters.twitch_chat.health = data.health
-                    characters.twitch_chat.max_health = data.max_health
-                    characters.twitch_chat.gold = data.gold
-                    characters.twitch_chat.inventory = data.inventory
-                    characters.twitch_chat.status_effects = data.status_effects
-                    characters.twitch_chat.abilities = data.abilities
-                    characters.twitch_chat.stats = {
+                    gameData.characters.twitch_chat.description = data.description
+                    gameData.characters.twitch_chat.health = data.health
+                    gameData.characters.twitch_chat.max_health = data.max_health
+                    gameData.characters.twitch_chat.gold = data.gold
+                    gameData.characters.twitch_chat.inventory = data.inventory
+                    gameData.characters.twitch_chat.status_effects = data.status_effects
+                    gameData.characters.twitch_chat.abilities = data.abilities
+                    gameData.characters.twitch_chat.stats = {
                         strength: data.strength,
                         dexterity: data.dexterity,
                         constitution: data.constitution,
@@ -1679,14 +1670,14 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                 
 
                 }else{
-                    characters.player.description = data.description
-                    characters.player.health = data.health
-                    characters.player.max_health = data.max_health
-                    characters.player.gold = data.gold
-                    characters.player.inventory = data.inventory
-                    characters.player.status_effects = data.status_effects
-                    characters.player.abilities = data.abilities
-                    characters.player.stats = {
+                    gameData.characters.player.description = data.description
+                    gameData.characters.player.health = data.health
+                    gameData.characters.player.max_health = data.max_health
+                    gameData.characters.player.gold = data.gold
+                    gameData.characters.player.inventory = data.inventory
+                    gameData.characters.player.status_effects = data.status_effects
+                    gameData.characters.player.abilities = data.abilities
+                    gameData.characters.player.stats = {
                         strength: data.strength,
                         dexterity: data.dexterity,
                         constitution: data.constitution,
@@ -1716,7 +1707,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
     
     async function viewerCharacterSelection(prunedHistory){
-        // have the AI generate different options for the viewers to pick from, and go through the viewerCharacterSelectionFlow
+        // have the AI generate different options for the viewers to pick from, and go through the gameData.viewerCharacterSelectionFlow
 
         // clear vote
         viewerVotes = []
@@ -1724,9 +1715,9 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
         activeVoteEntry = null
 
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${theme}. You are generating vote options for the player's ${viewerCharacterSelectionFlow[viewerCharacterSelectionState]}. Their character so far is ${characters.twitch_chat.description}. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options.`
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]}. Their character so far is ${gameData.characters.twitch_chat.description}. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`
         const body = {
-            model: gptModelSelect.value || 'gpt-4o-mini',
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: "generate the options"}],
             response_format: {
                 type: "json_schema",
@@ -1751,9 +1742,9 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
             },
         };
         
-        let isName = viewerCharacterSelectionFlow[viewerCharacterSelectionState].toLowerCase() == "name"
+        let isName = gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState].toLowerCase() == "name"
 
-        const response = await GPTRequest(endpoint, apiKey, body);
+        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
             let output = "";
@@ -1770,41 +1761,42 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
                 let voteOptions = []
                 options.options.forEach(option => {
+                    option = option.replace(/^\d+\.\s*/, "")
                     voteOptions.push({text: option.trim()})
                 });
 
-                print("-------------------------", false, true)
-                print(`Viewers, please vote for the ${viewerCharacterSelectionFlow[viewerCharacterSelectionState]} of your character.`)
+                writeToTerminal("-------------------------", true)
+                writeToTerminal(`Viewers, please vote for the ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]} of your character.`)
 
-                StartTwitchVote(voteOptions, parseInt(voteTime.value), async (winner) => {
-                    characters.twitch_chat.description += `${viewerCharacterSelectionFlow[viewerCharacterSelectionState]}: ${winner.text}\n`
+                StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), async (winner) => {
+                    gameData.characters.twitch_chat.description += `${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]}: ${winner.text}\n`
 
                     if (isName){
-                        characters.twitch_chat.name = winner.text
+                        gameData.characters.twitch_chat.name = winner.text
                     }
 
-                    viewerCharacterSelectionState++
-                    print(`Viewers have chosen "${winner.text}."`)
-                    if(viewerCharacterSelectionState < viewerCharacterSelectionFlow.length){
+                    gameData.viewerCharacterSelectionState++
+                    writeToTerminal(`Viewers have chosen "${winner.text}."`)
+                    if(gameData.viewerCharacterSelectionState < gameData.viewerCharacterSelectionFlow.length){
                         waitForKeypress(async () => {
                             viewerCharacterSelection(prunedHistory)
                         })
                     }else{
                         // have the AI summarize the character
                         let endpoint = `v1/chat/completions`
-                        let prompt = gptBasePrompt + ` The theme of the game is ${theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
+                        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
                         const body = {
-                            model: gptModelSelect.value || 'gpt-4o-mini',
-                            messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: characters.twitch_chat.description}],
+                            model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                            messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: gameData.characters.twitch_chat.description}],
                             stream: true,
                         };
 
-                        const response = await GPTRequest(endpoint, apiKey, body);
+                        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
                         if (response.status === 200) {
-                            compressAndAddToHistory( characters.twitch_chat.description, "user")
-                            prunedHistory.push({content: characters.twitch_chat.description, role: "user"})
-                            let msg = print(`test`, false, true);
+                            compressAndAddToHistory( gameData.characters.twitch_chat.description, "user")
+                            prunedHistory.push({content: gameData.characters.twitch_chat.description, role: "user"})
+                            let msg = writeToTerminal(`test`, true);
                             let output = "";
                             let ttsText = ""
                             
@@ -1844,7 +1836,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                                             }
 
                                             msg.innerHTML = parseMinecraftColorCodes(output);
-                                            outputDiv.scrollTop = outputDiv.scrollHeight;
+                                            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                                         }
                                     }
                                     
@@ -1856,18 +1848,18 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
                             }, async () => {
                                 toggleInput(false)
-                                if(aiImages.checked){
-                                    await asyncGenerateImage(characters.twitch_chat.description)
+                                if(elements.aiImages.checked){
+                                    await asyncGenerateImage(gameData.characters.twitch_chat.description)
                                 }
                                 
 
                                 await asyncParseCharacterStats(output, true)
                                 toggleInput(true)
                                 // print character info
-                                print("-------------------------", false, true)
-                                print(`Your character, ${characters.twitch_chat.name}, has been created. Here are the details:`, false, true)
-                                print(GetPlayerCharacterInfo(true), false, true)
-                                print("-------------------------", false, true)
+                                writeToLog("-------------------------", true)
+                                writeToLog(`Your character, ${gameData.characters.twitch_chat.name}, has been created. Here are the details:`, true)
+                                writeToLog(GetPlayerCharacterInfo(true), true)
+                                writeToLog("-------------------------", true)
 
                                 waitForKeypress(async () => {
                                     compressAndAddToHistory( output, "assistant")
@@ -1879,12 +1871,12 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                                     
                                     toggleInput(true)
                                     // check if the streamer is participating
-                                    if(streamerParticipates.checked){
-                                        state = "streamer_turn"
-                                        print("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
-                                        print("You may also check your characters by typing 'info'.")                                        
+                                    if(elements.streamerParticipates.checked){
+                                        gameData.state = "streamer_turn"
+                                        writeToTerminal("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
+                                        writeToTerminal("You may also check your characters by typing 'info'.")                                        
                                     }else{
-                                        state = "viewer_turn"
+                                        gameData.state = "viewer_turn"
 
                                         runGameLoop()
                                     }
@@ -1905,28 +1897,28 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
     async function executeCommand(input) {
         const [command, ...args] = input.split(' ');
 
-        if(state == "none"){
+        if(gameData.state == "none"){
             if (command === 'start') {
                 if(await checkSettings()){
-                    state = "theme"
+                    gameData.state = "theme"
                 }
             }
         }
-        else if(state == "theme"){
-            theme = input;
+        else if(gameData.state == "theme"){
+            gameData.theme = input;
             // have the AI generate a starting setting
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${theme}. Please give a brief description the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. The player will pick their character after this. Keep it brief, at the end ask the player to describe their character, make sure to segway into it smoothly.`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. The player will pick their character after this. Keep it brief, at the end ask the player to describe their character, make sure to segway into it smoothly.`
             const body = {
-                model: gptModelSelect.value || 'gpt-4o-mini',
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
                 messages: [{role: 'system', content: prompt}, {role: 'user', content: "Please describe the starting location and situation."}],
                 stream: true,
             };
 
 
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
             if (response.status === 200) {
-                let msg = print(`test`, false, true);
+                let msg = writeToTerminal(`test`, true);
                 let output = "";
                 let ttsText = ""
                 toggleInput(false)
@@ -1964,7 +1956,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                                 }
 
                                 msg.innerHTML = parseMinecraftColorCodes(output);
-                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                                elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                             }
                         }
                         
@@ -1976,7 +1968,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
                 }, async () => {
                     toggleInput(false)
-                    if(aiImages.checked){
+                    if(elements.aiImages.checked){
                         await asyncGenerateImage(output)
                     }
                     toggleInput(true)
@@ -1986,23 +1978,23 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                     if(ttsText.length > 0){
                         TryToSpeak(ttsText)
                     }
-                    //print("Player, please describe your character, in as much detail as you like.")
+                    //writeToTerminal("Player, please describe your character, in as much detail as you like.")
                     // check if twitch a twitch channel is set
-                    if(twitchChannel && twitchChannel.length > 0){
-                        if(streamerParticipates.checked){
-                            state = "character"
+                    if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
+                        if(elements.streamerParticipates.checked){
+                            gameData.state = "character"
                             toggleInput(true)
-                            print("-------------------------", false, true)
-                            print(`Streamer, please describe your character, in as much detail as you like. Your viewers will pick their character after you.`)
+                            writeToTerminal("-------------------------", true)
+                            writeToTerminal(`Streamer, please describe your character, in as much detail as you like. Your viewers will pick their character after you.`)
                         }else{
                             toggleInput(false)
-                            state = "viewer_character_selection"
+                            gameData.state = "viewer_character_selection"
                             startViewerCharacterSelection()
                         }
                     }else{
-                        state = "character"
-                        print("-------------------------", false, true)
-                        print("Player, please describe your character, in as much detail as you like.")
+                        gameData.state = "character"
+                        writeToTerminal("-------------------------", true)
+                        writeToTerminal("Player, please describe your character, in as much detail as you like.")
                         toggleInput(true)
                     }
                 
@@ -2013,39 +2005,39 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
             
         }
-        else if(state == "character"){
-            characters.player.description = input;
+        else if(gameData.state == "character"){
+            gameData.characters.player.description = input;
             toggleInput(true)
-            print("-------------------------", false, true)
-            state = "name"
-            print("Please give your character's name.")
+            writeToTerminal("-------------------------", true)
+            gameData.state = "name"
+            writeToTerminal("Please give your character's name.")
         }
-        else if (state == "name"){
-            characters.player.description += ` Name: ${input}\n`
-            characters.player.name = input
+        else if (gameData.state == "name"){
+            gameData.characters.player.description += ` Name: ${input}\n`
+            gameData.characters.player.name = input
 
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
 
             // check if
-            if(twitchChannel && twitchChannel.length > 0){
+            if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
                 prompt = prompt + ` end with "I see you have someone with you, who is that?"`
             }else{
                 prompt = prompt + ` end by asking the player what they wish to do next, with a little bit more story info.`
             }
 
             const body = {
-                model: gptModelSelect.value || 'gpt-4o-mini',
-                messages: [{role: 'system', content: prompt}, ...history, {role: 'user', content: characters.player.description}],
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: gameData.characters.player.description}],
                 stream: true,
             };
             
 
-            const response = await GPTRequest(endpoint, apiKey, body);
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
             if (response.status === 200) {
 
-                let msg = print(`test`, false, true);
+                let msg = writeToTerminal(`test`, true);
                 let output = "";
                 let ttsText = ""
                 toggleInput(false)
@@ -2083,7 +2075,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                                 }
 
                                 msg.innerHTML = parseMinecraftColorCodes(output);
-                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                                elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                             }
                         }
                         
@@ -2099,8 +2091,8 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                     if(ttsText.length > 0){
                         TryToSpeak(ttsText)
                     }
-                    if(aiImages.checked){
-                        await asyncGenerateImage(characters.player.description)
+                    if(elements.aiImages.checked){
+                        await asyncGenerateImage(gameData.characters.player.description)
                     }
                     
                     //generateCharacterDescription(output, false)
@@ -2108,61 +2100,61 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                     await asyncParseCharacterStats(output, false)
                     toggleInput(true)
                     // print character info
-                    print("-------------------------", false, true)
-                    print(`Your character, ${characters.player.name}, has been created. Here are the details:`, false, true)
-                    print(GetPlayerCharacterInfo(false), false, true)
+                    writeToLog("-------------------------", true)
+                    writeToLog(`Your character, ${gameData.characters.player.name}, has been created. Here are the details:`, true)
+                    writeToLog(GetPlayerCharacterInfo(false), true)
 
-                    print("-------------------------", false, true)
+                    writeToLog("-------------------------", true)
                     //checkForChanges(output, false, () => {
 
                         
-                        if(twitchChannel && twitchChannel.length > 0){
+                        if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
                             waitForKeypress(async () => {
-                                state = "viewer_character_selection"
+                                gameData.state = "viewer_character_selection"
                                 startViewerCharacterSelection()
                             })
                         }else{
                             toggleInput(true)
-                            state = "streamer_turn"
-                            print("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
-                            print("You may also check your character by typing 'info'.")
+                            gameData.state = "streamer_turn"
+                            writeToTerminal("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
+                            writeToTerminal("You may also check your character by typing 'info'.")
                         }       
                     //})
              
                 });
             }
         }
-        else if (state == "streamer_turn"){
+        else if (gameData.state == "streamer_turn"){
 
             // check if streamer just said "info"
             if(input.toLowerCase() == "info"){
-                print(GetPlayerCharacterInfo(false), false, true)
+                writeToTerminal(GetPlayerCharacterInfo(false), true)
                 // if twitch chat is playing too, show their info
-                if(twitchChannel && twitchChannel.length > 0){
-                    print("-------------------------", false, true)
-                    print(GetPlayerCharacterInfo(true), false, true)
+                if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
+                    writeToTerminal("-------------------------", true)
+                    writeToTerminal(GetPlayerCharacterInfo(true), true)
                 }
-                print("-------------------------", false, true)
+                writeToTerminal("-------------------------", true)
                 
             }else{
-                print(`${characters.player.name} decides to ${input}`, false, true)
+                writeToTerminal(`${gameData.characters.player.name} decides to ${input}`, true)
 
                 viewerTurn = false
-                print("-------------------------", false, true)
+                writeToTerminal("-------------------------", true)
                 
                 // generate the AI response to the player's move
                 let endpoint = `v1/chat/completions`
-                let prompt = gptBasePrompt + ` The theme of the game is ${theme}. Please respond to ${characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response.`
+                let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response.`
                 const body = {
-                    model: gptModelSelect.value || 'gpt-4o-mini',
-                    messages: [{role: 'system', content: prompt}, ...history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${characters.player.name} decides to ${input}`}],
+                    model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                    messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.player.name} decides to ${input}`}],
                     stream: true,
                 };
 
                 
-                compressAndAddToHistory( `${characters.player.name} decides to ${input}`, "user")
+                compressAndAddToHistory( `${gameData.characters.player.name} decides to ${input}`, "user")
                 toggleInput(false)
-                const response = await GPTRequest(endpoint, apiKey, body);
+                const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
                 if (response.status === 200) {
                     let output = "";
@@ -2202,21 +2194,21 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
 
                     }, async () => {
                         toggleInput(false)
-                        if(aiImages.checked){
+                        if(elements.aiImages.checked){
                             await asyncGenerateImage(output)
                         }
                         toggleInput(true)
              
                         compressAndAddToHistory( output, "assistant")
-                        print(output)
+                        writeToTerminal(output)
                        
                         checkForChanges(output, false, () => {
-                            print("-------------------------", false, true)
+                            writeToTerminal("-------------------------", true)
                             // check if we are doing twitch viewer participation
-                            if(twitchChannel && twitchChannel.length > 0){
+                            if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
                                 waitForKeypress(async () => {
                                     toggleInput(false)
-                                    state = "viewer_turn"
+                                    gameData.state = "viewer_turn"
                                     runGameLoop()
                                 })
                             }
