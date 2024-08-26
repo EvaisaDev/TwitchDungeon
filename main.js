@@ -1818,14 +1818,16 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
              
                                     
                                     toggleInput(true)
-                                    //generateCharacterDescription(output, true)
-                                   // checkForChanges(output, true, () => {
+                                    // check if the streamer is participating
+                                    if(streamerParticipates.checked){
                                         state = "streamer_turn"
                                         print("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
-                                        print("You may also check your characters by typing 'info'.")
+                                        print("You may also check your characters by typing 'info'.")                                        
+                                    }else{
+                                        state = "viewer_turn"
 
                                         runGameLoop()
-                                    //})
+                                    }
                                 });
                             });
                         }
@@ -1933,6 +1935,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
                             print("-------------------------", false, true)
                             print(`Streamer, please describe your character, in as much detail as you like. Your viewers will pick their character after you.`)
                         }else{
+                            toggleInput(false)
                             state = "viewer_character_selection"
                             startViewerCharacterSelection()
                         }
