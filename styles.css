@@ -10,45 +10,58 @@ body {
     display: flex;
 }
 
-#sidebar {
+/* Sidebar styling */
+#settings-sidebar, #save-sidebar {
     width: 350px;
     height: 100%;
-    position: absolute; /* Overlay the sidebar */
+    position: absolute;
     top: 0;
     right: -350px; /* Initially hidden */
     background-color: #2e2e2e;
     padding: 20px;
     box-sizing: border-box;
-    transition: right 0.3s ease; /* Smooth transition */
-    z-index: 1000; /* Ensure the sidebar is on top */
-    overflow-y: auto; /* Enable vertical scrolling */
+    transition: right 0.3s ease;
+    z-index: 1000;
+    overflow-y: auto;
 }
 
-#sidebar label {
-    margin-bottom: 10px;
-}
-
-#sidebar input {
-    margin-bottom: 20px;
-}
-
-#sidebar.show {
+#settings-sidebar.show, #save-sidebar.show {
     right: 0; /* When active, move into view */
 }
 
-#menu-toggle {
+#settings-sidebar h2, #save-sidebar h2 {
+    margin-top: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#settings-sidebar label, #save-sidebar label {
+    margin-bottom: 10px;
+}
+
+#settings-sidebar input, #save-sidebar input {
+    margin-bottom: 20px;
+}
+
+/* Toggle buttons */
+#settings-toggle, #save-toggle {
     position: absolute;
     top: 10px;
     right: 10px;
     cursor: pointer;
     font-size: 24px;
-    z-index: 1001; /* Ensure the toggle button is on top */
+    z-index: 1001; /* Ensure the toggle buttons are on top */
+}
+
+#save-toggle {
+    right: 50px;
 }
 
 /* Main container holding both consoles */
 #main-container {
     display: flex;
-    width: 100%; /* Use the full width of the screen */
+    width: 100%;
     height: 100%;
 }
 
@@ -57,7 +70,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    z-index: 500; /* Consoles should be below the sidebar */
+    z-index: 500;
 }
 
 #terminal {
@@ -103,7 +116,6 @@ body {
     border: none;
     font-size: 24px;
     color: #ffffff;
-    flex-grow: 0;
     outline: none;
     text-align: left;
 }
@@ -134,4 +146,63 @@ body {
     max-width: 100%;
     min-width: 100px;
     box-sizing: border-box; /* Ensures padding is included in width calculation */
+}
+
+/* Save/Load Menu */
+#save-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    margin-top: 10px;
+}
+
+#save-list li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.save-button {
+    background-color: #3a3a3a;
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+    flex-grow: 1;
+}
+
+.save-button:hover {
+    background-color: #4a4a4a;
+}
+
+.delete-button {
+    background: none;
+    border: none;
+    color: #ff5c5c;
+    margin-left: 10px;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+.delete-button:hover {
+    color: #ff7878;
+}
+
+/* Styled Save Game button */
+.sidebar-button {
+    background-color: #007bff;
+    color: #ffffff;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 18px;
+    transition: background-color 0.2s ease;
+    margin-bottom: 20px;
+    width: 100%;
+}
+
+#save-game:hover {
+    background-color: #0056b3;
 }

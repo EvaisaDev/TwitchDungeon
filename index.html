@@ -9,54 +9,72 @@
 </head>
 <body>
     
-    <div id="sidebar">
+    <div id="settings-sidebar">
         <h2>Settings</h2>
         
-        <label for="api-key">OpenAI API Key:</label>
-        <div style="display: flex; align-items:normal">
-            <input id="api-key-input" type="password" />
-            <span id="toggle-api-key" class="fas fa-eye-slash" style="margin-left: 2px; cursor: pointer;"></span>
+        <!-- Settings Form -->
+        <div id="settings-form">
+            <label for="api-key">OpenAI API Key:</label>
+            <div style="display: flex; align-items:normal">
+                <input id="api-key-input" type="password" />
+                <span id="toggle-api-key" class="fas fa-eye-slash" style="margin-left: 2px; cursor: pointer;"></span>
+            </div>
+
+            <label for="gpt-model-select">GPT Model:</label>
+            <input type="text" id="gpt-model-select" placeholder="i.e. gpt-4o" value="gpt-4o-mini"><br>
+
+            <!-- max words to generate -->
+            <label for="max-words">Max Words:</label>
+            <input type="number" id="max-words" value="200"><br>
+        
+            <label for="twitch-channel">Twitch Channel Name:</label>
+            <input type="text" id="twitch-channel" placeholder="Enter Twitch Channel Name"><br>
+
+            <!--Checkbox for allowing streamer to take part in the adventure-->
+            <label for="take-turns">Streamer participates:</label>
+            <input type="checkbox" id="take-turns" checked="true"><br>
+
+            <!-- Vote time -->
+            <label for="vote-time">Vote Time (seconds):</label>
+            <input type="number" id="vote-time" value="30"><br>
+
+            <!-- Include AI Images -->
+            <label for="ai-images">Include AI Images (Experimental):</label>
+            <input type="checkbox" id="ai-images" checked="false"><br>
+
+            <!-- Use Text To Speech -->
+            <label for="use-tts">Use Text To Speech:</label>
+            <input type="checkbox" id="use-tts" checked="false"><br>
+
+            <!-- Speakerbot Address -->
+            <label for="speakerbot-address">Speakerbot Address:</label>
+            <input type="text" id="speakerbot-address" value="localhost"><br>
+
+            <!-- Speakerbot Port -->
+            <label for="speakerbot-port">Speakerbot Port:</label>
+            <input type="number" id="speakerbot-port" value="7580"><br>
+
+            <!-- Narrator Voice Alias -->
+            <label for="narrator-voice-alias">Narrator Voice Alias:</label>
+            <input type="text" id="narrator-voice-alias" value="narrator"><br>
         </div>
-
-        <label for="gpt-model-select">GPT Model:</label>
-        <input type="text" id="gpt-model-select" placeholder="i.e. gpt-4o" value="gpt-4o-mini"><br>
-
-        <!-- max words to generate -->
-        <label for="max-words">Max Words:</label>
-        <input type="number" id="max-words" value="200"><br>
-    
-        <label for="twitch-channel">Twitch Channel Name:</label>
-        <input type="text" id="twitch-channel" placeholder="Enter Twitch Channel Name"><br>
-
-        <!--Checkbox for allowing streamer to take part in the adventure-->
-        <label for="take-turns">Streamer participates:</label>
-        <input type="checkbox" id="take-turns" checked="true"><br>
-
-        <!-- Vote time -->
-        <label for="vote-time">Vote Time (seconds):</label>
-        <input type="number" id="vote-time" value="30"><br>
-
-        <!-- Include AI Images -->
-        <label for="ai-images">Include AI Images (Experimental):</label>
-        <input type="checkbox" id="ai-images" checked="false"><br>
-
-        <!-- Use Text To Speech -->
-        <label for="use-tts">Use Text To Speech:</label>
-        <input type="checkbox" id="use-tts" checked="false"><br>
-
-        <!-- Speakerbot Address -->
-        <label for="speakerbot-address">Speakerbot Address:</label>
-        <input type="text" id="speakerbot-address" value="localhost"><br>
-
-        <!-- Speakerbot Port -->
-        <label for="speakerbot-port">Speakerbot Port:</label>
-        <input type="number" id="speakerbot-port" value="7580"><br>
-
-        <!-- Narrator Voice Alias -->
-        <label for="narrator-voice-alias">Narrator Voice Alias:</label>
-        <input type="text" id="narrator-voice-alias" value="narrator"><br>
     </div>
-    <div id="menu-toggle">☰</div>
+
+    <div id="save-sidebar">
+        <h2>Save/Load</h2>
+        <label for="save-name">Save Name:</label>
+        <input type="text" id="save-name" placeholder="Enter Save Name"><br>
+        <button id="save-game" class="sidebar-button" onclick="SaveGame(document.getElementById('save-name').value); generateSaveList()">Save Game</button>
+        <button id="new-game" class="sidebar-button" onclick="ResetGame()">Reset Game</button>
+
+        <h3>Saved Games</h3>
+        <ul id="save-list">
+            <!-- Save games will be listed here -->
+        </ul>
+    </div>
+
+    <div id="settings-toggle"><i class="fas fa-cog"></i></div>
+    <div id="save-toggle"><i class="fas fa-save"></i></div>
     
     <!-- Main container for Story and Log sections -->
     <div id="main-container">
@@ -81,14 +99,30 @@
     </div>
 
     <script>
-        // Toggle sidebar
-        document.getElementById('menu-toggle').addEventListener('click', function() {
-            const sidebar = document.getElementById('sidebar');
+        // Toggle settings sidebar
+        document.getElementById('settings-toggle').addEventListener('click', function() {
+            const sidebar = document.getElementById('settings-sidebar');
             if (sidebar.classList.contains('show')) {
                 sidebar.classList.remove('show');
             } else {
                 sidebar.classList.add('show');
             }
+
+            // close save/load sidebar
+            document.getElementById('save-sidebar').classList.remove('show');
+        });
+
+        // Toggle save/load sidebar
+        document.getElementById('save-toggle').addEventListener('click', function() {
+            const sidebar = document.getElementById('save-sidebar');
+            if (sidebar.classList.contains('show')) {
+                sidebar.classList.remove('show');
+            } else {
+                sidebar.classList.add('show');
+            }
+
+            // close settings
+            document.getElementById('settings-sidebar').classList.remove('show');
         });
 
         // Resizing functionality
@@ -99,23 +133,24 @@
         let isResizing = false;
 
         divider.addEventListener('mousedown', function(e) {
-            console.log('attempting resize');
             isResizing = true;
             document.addEventListener('mousemove', resize);
             document.addEventListener('mouseup', stopResize);
         });
 
+        let default_left_width = 65;
+        leftSide.style.width = `${default_left_width}%`;
+        rightSide.style.width = `${100 - default_left_width}%`;
+
         function resize(e) {
             if (!isResizing) return;
-            // prevent selection of text
-            if(e.stopPropagation) e.stopPropagation();
-            if(e.preventDefault) e.preventDefault();
-            e.cancelBubble=true;
-            e.returnValue=false;
+            
+            e.preventDefault();
 
             let containerOffsetLeft = document.getElementById('main-container').offsetLeft;
             let pointerRelativeXpos = e.clientX - containerOffsetLeft;
             let newLeftWidth = (pointerRelativeXpos / document.getElementById('main-container').offsetWidth) * 100;
+            
             leftSide.style.width = `${newLeftWidth}%`;
             rightSide.style.width = `${100 - newLeftWidth}%`;
         }
@@ -133,6 +168,26 @@
 
         document.getElementById('terminal').addEventListener('click', function() {
             document.getElementById('input').focus();
+        });
+
+        function generateSaveList() {
+            const saveList = document.getElementById('save-list');
+            const saves = GetSaveList();
+            saveList.innerHTML = '';
+
+            saves.forEach(save => {
+                const listItem = document.createElement('li');
+                listItem.innerHTML = `
+                    <span class="save-button" onclick="LoadGame('${save}')">${save}</span>
+                    <button class="delete-button" onclick="DeleteSave('${save}'); generateSaveList();"><i class="fas fa-trash"></i></button>
+                `;
+                saveList.appendChild(listItem);
+            });
+        }
+
+        // Populate save list on load
+        window.addEventListener('load', function() {
+            generateSaveList()
         });
     </script>
     <script src="main.js"></script>
