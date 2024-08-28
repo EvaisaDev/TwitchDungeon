@@ -153,6 +153,7 @@ let gameDataTemplate = {
             }
         },
     },
+	currentSceneCharacters: {},
     viewerCharacterSelectionFlow: [],
     viewerCharacterSelectionState: 0,
     history: [],
@@ -1796,8 +1797,7 @@ async function ParseCharacterStats(text, isViewer, callback){
             
             let data = JSON.parse(content.choices[0].message.content)
 
-            console.log(data)
-
+			/*
             if(isViewer){
                 gameData.characters.twitch_chat.description = data.description
                 gameData.characters.twitch_chat.health = data.health
@@ -1835,22 +1835,161 @@ async function ParseCharacterStats(text, isViewer, callback){
         
 
             }
+			*/
 
-            callback()
+            callback(data)
         });
     }else{
         callback()
     }
 }
 
+async function asyncGeneratePlayerCharacterInfo(text, isViewer){
+	return new Promise((resolve, reject) => {
+		ParseCharacterStats(text, isViewer, (data) => {
+
+			if(data){
+				// update character stats
+				if(isViewer){
+					gameData.characters.twitch_chat.description = data.description
+					gameData.characters.twitch_chat.health = data.health
+					gameData.characters.twitch_chat.max_health = data.max_health
+					gameData.characters.twitch_chat.gold = data.gold
+					gameData.characters.twitch_chat.inventory = data.inventory
+					gameData.characters.twitch_chat.status_effects = data.status_effects
+					gameData.characters.twitch_chat.abilities = data.abilities
+					gameData.characters.twitch_chat.stats = {
+						strength: data.strength,
+						dexterity: data.dexterity,
+						constitution: data.constitution,
+						intelligence: data.intelligence,
+						wisdom: data.wisdom,
+						charisma: data.charisma
+					}
+				}else{
+					gameData.characters.player.description = data.description
+					gameData.characters.player.health = data.health
+					gameData.characters.player.max_health = data.max_health
+					gameData.characters.player.gold = data.gold
+					gameData.characters.player.inventory = data.inventory
+					gameData.characters.player.status_effects = data.status_effects
+					gameData.characters.player.abilities = data.abilities
+					gameData.characters.player.stats = {
+						strength: data.strength,
+						dexterity: data.dexterity,
+						constitution: data.constitution,
+						intelligence: data.intelligence,
+						wisdom: data.wisdom,
+						charisma: data.charisma
+					}
+				}
+				
+
+			}
+
+			resolve()
+		})
+	})
+}
+
+
 async function asyncParseCharacterStats(text, isViewer){
     return new Promise((resolve, reject) => {
-        ParseCharacterStats(text, isViewer, () => {
-            resolve()
+        ParseCharacterStats(text, isViewer, (data) => {
+            resolve(data)
         })
     })
 }
 
+
+async function FindCharactersInScene(text){
+	// have the AI find all the characters in the scene, that are not the player characters and are not already defined in the scene
+	let endpoint = `v1/chat/completions`
+	let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. You are determining the characters in the scene. Please provide a list of characters in the scene, based on the text provided. Do not add additional story info, ONLY reply with the characters in the scene. DO NOT include characters that are already defined.`
+	
+	let already_defined_characters = "These characters are already defined in the scene:\n"
+	for (const [key, value] of Object.entries(gameData.characters)) {
+		value = value.name
+		if(value){
+			already_defined_characters += value + "\n"
+		}
+	}
+	for (const [key, value] of Object.entries(gameData.currentSceneCharacters)) {
+		value = value.name
+		if(value){
+			already_defined_characters += value + "\n"
+		}
+	}
+	
+	const body = {
+		model: elements.gptModelSelect.value || 'gpt-4o-mini',
+		messages: [{role: 'system', content: prompt}, {role: already_defined_characters}, {role: 'user', content: text}],
+		response_format: {
+			type: "json_schema",
+			json_schema: {
+				name: "characters_in_scene",
+				schema: {
+					type: "object",
+					properties: {
+						characters: {
+							type: "object",
+							properties: {
+								name: {
+									type: "string"
+								},
+								description: {
+									type: "string"
+								}
+							},
+							required: ["name", "description"],
+						}
+					},
+					required: ["characters"],
+				},
+				strict: true
+				
+			},
+		},
+	};
+
+	return new Promise((resolve, reject) => {
+		GPTRequest(endpoint, elements.apiKeyInput.value, body).then((response) => {
+			if (response.status === 200) {
+				let json = ""
+				HandleStream(response.body, (text) => {
+					json += text
+				}
+				, () => {
+					// parse json
+					let data = JSON.parse(json)
+					let characters = JSON.parse(data.choices[0].message.content)
+					resolve(characters)
+				});
+			}else{
+				reject()
+			}
+		})
+	})
+}
+
+async function updateSceneCharacters(text){
+	// have the AI update the scene characters based on the text provided
+	let characters = await FindCharactersInScene(text)
+
+	if(characters){
+		// generate character
+		let character = {
+			name: characters.characters.name,
+			description: characters.characters.description
+		}
+
+		// generate character data
+		let data = await asyncGeneratePlayerCharacterInfo(`name: ${character.name} - description: ${character.description}`, false)
+		if(data){
+			gameData.currentSceneCharacters[character.name] = data
+		}
+	}
+}
 
 
 async function viewerCharacterSelection(prunedHistory){
@@ -2006,7 +2145,7 @@ async function viewerCharacterSelection(prunedHistory){
                             }
                             
 
-                            await asyncParseCharacterStats(output, true)
+                            await asyncGeneratePlayerCharacterInfo(output, true)
                             toggleInput(true)
                             // print character info
                             writeToLog("-------------------------", true)
@@ -2268,7 +2407,7 @@ async function executeCommand(input) {
                 
                 //generateCharacterDescription(output, false)
 
-                await asyncParseCharacterStats(output, false)
+                await asyncGeneratePlayerCharacterInfo(output, false)
                 toggleInput(true)
                 // print character info
                 writeToLog("-------------------------", true)
