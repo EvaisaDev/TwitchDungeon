@@ -53,6 +53,7 @@ Example: "&4Redwood forest&f" will color the text "Redwood forest" red.
 Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
 Do not format your text with markdown, this is not supported. Only use minecraft color codes.
 Use minecraft color codes where-ever you can.
+If the user needs to roll a dice, for example to attack, or for damage, or a saving role, etc. just end your sentence with please roll a d20, 7 or above, etc. based on the player's stats.
 `;
 
 let gptBasePrompt = promptTemplate;
@@ -933,6 +934,7 @@ async function checkSettings() {
     }
 }
 
+
 async function checkForChanges(text, isViewer, callback){
     // have the AI determine if there are any items or status effects gained or lost in the text. 
     // use a json schema to make sure the AI response is in the correct format
@@ -1523,6 +1525,48 @@ async function runGameLoop(){
     }
 }
 
+
+async function checkIfRollNeeded(text){
+	// check if the text contains a roll request
+	// if it does, roll the dice and return the result
+	// if it does not, return null
+	let endpoint = `v1/chat/completions`
+	let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. You are checking if the player needs to roll dice based on the provided text. If the text contains a roll request, return the required dice roll`
+
+	const body = {
+		model: elements.gptModelSelect.value || 'gpt-4o-mini',
+		messages: [{role: 'system', content: prompt}, {role: 'user', content: text}],
+		response_format: {
+			type: "json_schema",
+			json_schema: {
+				name: "roll",
+				schema: {
+					type: "object",
+					properties: {
+						diceFaces: {
+							type: "integer"
+						},
+						diceCount: {
+							type: "integer"
+						},
+						modifier: {
+							type: "integer"
+						},
+						requiredValue: {
+							type: "integer"
+						}
+					},
+					required: ["diceFaces", "diceCount", "modifier", "requiredValue"],
+					additionalProperties: false
+				},
+				strict: true
+				
+			},
+		},
+	};
+}
+
+
 async function startViewerCharacterSelection(prunedHistory){
     // if prunedHistory is not set, set it to the gameData.history
     if(!prunedHistory){
@@ -1900,6 +1944,8 @@ async function asyncParseCharacterStats(text, isViewer){
         })
     })
 }
+
+
 
 
 async function FindCharactersInScene(text){
