@@ -1,4 +1,3 @@
-
 const elements = {
     inputField: 'input',
     outputDiv: 'output-story',
@@ -16,13 +15,17 @@ const elements = {
     useTTS: 'use-tts',
     speakerbotAddress: 'speakerbot-address',
     speakerbotPort: 'speakerbot-port',
-    narratorVoiceAlias: 'narrator-voice-alias'
+    narratorVoiceAlias: 'narrator-voice-alias',
+    autoContinue: 'auto-continue',
+    chatTheme: 'chat-theme'
 };
+
 
 // Initialize all elements
 for (let key in elements) {
     elements[key] = document.getElementById(elements[key]);
 }
+
 
 const promptTemplate = `
 You are a game master for a text based adventure game. you are completely fine with gore and violence, and you will not break the fourth wall.
@@ -50,11 +53,13 @@ Here is the list:
 '&f': 'color:#FFFFFF'
 Make sure to type &f after you are done coloring your text to reset the color to white.
 Example: "&4Redwood forest&f" will color the text "Redwood forest" red.
+Please mainly use light colors, because the dark colors are hard to read on the dark website.
 Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
 Do not format your text with markdown, this is not supported. Only use minecraft color codes.
 Use minecraft color codes where-ever you can.
-If the user needs to roll a dice, for example to attack, or for damage, or a saving role, etc. just end your sentence with please roll a d20, 7 or above, etc. based on the player's stats.
+Do not ask players to roll dice at any point.
 `;
+
 
 let gptBasePrompt = promptTemplate;
 
@@ -94,6 +99,8 @@ loadSetting(elements.useTTS, 'twitchdungeon-use-tts', false, true);
 loadSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address', 'localhost');
 loadSetting(elements.speakerbotPort, 'twitchdungeon-speakerbot-port', 7580);
 loadSetting(elements.narratorVoiceAlias, 'twitchdungeon-narrator-voice-alias', '');
+loadSetting(elements.autoContinue,'twitchdungeon-auto-continue',false,true);
+loadSetting(elements.chatTheme,'twitchdungeon-chat-theme',false,true);
 let maxWordsValue = loadSetting(elements.maxWords, 'twitchdungeon-max-words', 200);
 gptBasePrompt += `The maximum word count for your responses is ${maxWordsValue}.`;
 
@@ -111,11 +118,14 @@ elements.maxWords.addEventListener('input', () => {
     maxWordsValue = saveSetting(elements.maxWords, 'twitchdungeon-max-words');
     gptBasePrompt = promptTemplate + `The maximum word count for your responses is ${maxWordsValue}.`;
 });
+elements.autoContinue.addEventListener('input',()=>saveSetting(elements.autoContinue,'twitchdungeon-auto-continue',true));
+elements.chatTheme.addEventListener('input',()=>saveSetting(elements.chatTheme,'twitchdungeon-chat-theme',true));
 
 
 let gameDataTemplate = {
     state: "none",
     theme: "fantasy",
+	chatThemeSubmissions: {},
     characters: {
         player: {
             description: "",
@@ -173,19 +183,53 @@ let voteSave_entry = null
 let timeLeft = 0
 let apiKeyVisible = false;
 
+// === GLOBAL TRACKERS ===
+const __timers      = [];
+const __controllers = [];
+
+// keep the originals
+const __nativeSetTimeout  = window.setTimeout;
+const __nativeSetInterval = window.setInterval;
+
+// wrap setTimeout / setInterval
+window.setTimeout  = (fn, ms, ...args) => {
+  const id = __nativeSetTimeout(fn, ms, ...args);
+  __timers.push({ type: 'timeout',  id });
+  return id;
+};
+window.setInterval = (fn, ms, ...args) => {
+  const id = __nativeSetInterval(fn, ms, ...args);
+  __timers.push({ type: 'interval', id });
+  return id;
+};
+
+
 
 function ResetGame(){
-    gameData = JSON.parse(JSON.stringify(gameDataTemplate))
-    clear()
-    activeVote = null
-    viewerVotes = []
-    activeVoteEntry = null  
-    timeLeft = 0
-    toggleInput(true)
-    checkSettings()
-}
-
-    
+	// cancel every timeout / interval
+	__timers.forEach(t => {
+	  if (t.type === 'timeout')  clearTimeout(t.id);
+	  else                       clearInterval(t.id);
+	});
+	__timers.length = 0;
+  
+	// abort every in-flight fetch
+	__controllers.forEach(c => c.abort());
+	__controllers.length = 0;
+  
+	// now your existing reset logic…
+	gameData = JSON.parse(JSON.stringify(gameDataTemplate));
+	clear();
+	activeVote = null;
+	viewerVotes = [];
+	activeVoteEntry = null;
+	voteSave_entry = null;
+	timeLeft = 0;
+	continueCallback = null;
+	gameData.state = "none";
+	toggleInput(true);
+	writeToTerminal("The dungeon has been stopped. Type 'dungeon start' to begin a new adventure.", true);
+  }
 
 
 function AddToHistory(content, role){
@@ -404,6 +448,36 @@ async function StartTwitchVote(options, duration, finishCallback){
         GenerateVoteMessage()
     }, 1000)
 }
+
+function startChatThemeSubmission() {
+    gameData.state = 'chat_theme_submission';
+    gameData.chatThemeSubmissions = {};
+    toggleInput(false);
+    let duration = parseInt(elements.voteTime.value);
+    let [timerLine] = writeToTerminal(`Chat: suggest a theme (up to 3 words) using &c!suggesttheme [theme]&f. ${duration} seconds remaining.`, true);
+    let remaining = duration;
+    let countdown = setInterval(() => {
+        remaining--;
+        if (remaining >= 0) {
+            timerLine.innerHTML = parseMinecraftColorCodes(`Chat: suggest a theme (up to 3 words) using &c!suggesttheme [theme]&f. ${remaining} seconds remaining.`);
+        }
+        if (remaining <= 0) {
+            clearInterval(countdown);
+        }
+    }, 1000);
+    setTimeout(() => {
+        clearInterval(countdown);
+        timerLine.remove();
+        let subs = Object.values(gameData.chatThemeSubmissions);
+        if (!subs.length) subs = ['fantasy'];
+        let theme = subs[Math.floor(Math.random() * subs.length)];
+        gameData.theme = theme;
+        writeToTerminal(`Chat chose theme: ${theme}`, true);
+        gameData.state = 'theme';
+        executeCommand(theme);
+    }, duration * 1000);
+}
+
 
 function imageToMinecraftAscii(ctx, width, height, outputWidth, output) {
     // Minecraft color codes mapping
@@ -624,52 +698,65 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
 
 
 async function ConnectToTwitch(){
-    // connect to twitch irc anonymously using websockets
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-    ws.onopen = function open() {
+    ws.onopen = function open(){
         ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
         ws.send('PASS SCHMOOPIIE');
         ws.send('NICK justinfan12345');
         ws.send('JOIN #' + elements.twitchChannelInput.value);
-
-        // ping 
     };
+    ws.onmessage = function incoming(event){
+        const raw = event.data;
+        const parsed = parseTwitchMessage(raw);
+        if (parsed.command === 'PRIVMSG') {
+            const username = parsed.prefix.split('!')[0];
+            const messageText = parsed.params[1];
 
-    ws.onmessage = function incoming(event) {
-        const message = event.data;
-        const parsedMessage = parseTwitchMessage(message);
-        if(parsedMessage.command == "PRIVMSG"){
-            let username = parsedMessage.prefix.split("!")[0]
-            let message = parsedMessage.params[1]
-
-            // check if a vote is active
-            if(activeVote){
-                // check if the message starts with a number and that the user has not voted yet
-                if(!viewerVotes.includes(username)){
-                    let vote = parseInt(message)
-                    if(vote && vote > 0 && vote <= activeVote.length){
-                        activeVote[vote - 1].votes++
-                        viewerVotes.push(username)
+            if (gameData.state === 'chat_theme_submission') {
+                if (messageText.startsWith('!suggesttheme ')) {
+                    const suggestion = messageText.slice(14).trim();
+                    if (!gameData.chatThemeSubmissions[username] && suggestion.split(/\s+/).length <= 3) {
+                        gameData.chatThemeSubmissions[username] = suggestion;
+                        writeToTerminal(username + ' suggested: ' + suggestion, true);
                     }
                 }
             }
 
-        }
+            const tags = parsed.tags || {};
+            const isBroadcaster = tags.badges && tags.badges.includes('broadcaster/1');
+            const isMod = tags.mod === '1';
 
-        // respond to pings
-        if (parsedMessage.command === 'PING') {
+            if ((isMod || isBroadcaster) && messageText.startsWith('>')) {
+                executeCommand(messageText.slice(1).trim());
+                return;
+            }
+            if ((isMod || isBroadcaster) && messageText.startsWith('!')) {
+                executeCommand(messageText.slice(1).trim());
+                return;
+            }
+
+            if (activeVote) {
+                if (!viewerVotes.includes(username)) {
+                    const vote = parseInt(messageText);
+                    if (vote && vote > 0 && vote <= activeVote.length) {
+                        activeVote[vote - 1].votes++;
+                        viewerVotes.push(username);
+                    }
+                }
+            }
+        }
+        if (parsed.command === 'PING') {
             ws.send('PONG :tmi.twitch.tv');
             ws.send('PONG :tmi.twitch.tv\r\n');
-            console.log('PONG :tmi.twitch.tv');
         }
-
-        
     };
-
-    ws.onerror = function error(event) {
-        console.log(event)
-    }
+    ws.onerror = function error(event){
+        console.log(event);
+    };
 }
+
+
+
 
 let speakerbot = null
 
@@ -795,29 +882,20 @@ function clear() {
 }
 
 async function HandleStream(stream, callback, done) {
-    const reader = stream.getReader();
-    const chunks = [];
-    
-    let finished = false;
-    while (!finished) {
-        const { value, done: streamDone } = await reader.read();
-        if (streamDone) {
-            finished = true;
-        }
-        if (value) {
-            const text = new TextDecoder().decode(value);
-            chunks.push(text);
-            const lines = text.split('\n');
-            for (let i = 0; i < lines.length; i++) {
-                callback(lines[i]);
-            }
-        }
-    }
-
-    if (finished) {
-        done();
-    }
-}
+	const reader = stream.getReader();
+	try {
+	  while (true) {
+		const { value, done: streamDone } = await reader.read();
+		if (streamDone) break;
+		const text = new TextDecoder().decode(value);
+		text.split('\n').forEach(callback);
+	  }
+	  done();
+	} catch (err) {
+	  // most likely an AbortError — just swallow and exit
+	}
+  }
+  
 
 let continueCallback = null
 
@@ -833,15 +911,19 @@ function toggleInput(enabled, newPlaceholder = null) {
 }
 
 function GPTRequest(endpoint, apiKey, body) {
-    return fetch(`https://api.openai.com/${endpoint}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(body)
-    });
-}
+	const controller = new AbortController();
+	__controllers.push(controller);
+  
+	return fetch(`https://api.openai.com/${endpoint}`, {
+	  method:  'POST',
+	  headers: {
+		'Content-Type':  'application/json',
+		'Authorization': `Bearer ${apiKey}`
+	  },
+	  body:       JSON.stringify(body),
+	  signal:     controller.signal
+	});
+  }
 
 
 
@@ -893,46 +975,48 @@ elements.inputField.addEventListener('keydown', function(event) {
 });
 
 async function waitForKeypress(callback){
-    continueCallback = callback
+    if(elements.autoContinue.checked){
+        callback();
+        return;
+    }
+    continueCallback=callback
     toggleInput(true)
 }
 
 async function checkSettings() {
     if (!elements.apiKeyInput.value) {
         writeToTerminal('Please enter your OpenAI API key in the sidebar menu, then type "start" to begin.', true);
-        return false
-    }else{
-        // make a tiny api request to check if the api key is valid
-        const model = elements.gptModelSelect.value || 'gpt-4o-mini';
-
-        let endpoint = `v1/chat/completions`
-        // send gpt chat request and stream the response to the terminal, every time we receive a chunk
-        const body = {
-            model: model,
-            messages: [{role: 'system', content: 'You are a helpful assistant.'}, {role: 'user', content: "hello!"}],
-            max_tokens: 20
-        };
-
-        const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
-
-        if (response.status === 200) {
-            // clear the terminal
-            clear();
-            writeToTerminal("Welcome adventurer, please choose a theme for your adventure: ")
-            gameData.state = "theme"
-            ConnectToSpeakerbot()
-            // if twitch channel is set, connect to twitch
-            if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
-                ConnectToTwitch()
-            }
-            return true;
-        } else {
-            writeToTerminal('Your API key is invalid, does not have access to the model, or you have exceeded your quota. Please update your API key then type "start" to begin.');
-            return false;
-        }
-        
+        return false;
     }
+    const model = elements.gptModelSelect.value || 'gpt-4o-mini';
+    let endpoint = `v1/chat/completions`;
+    const body = {
+        model: model,
+        messages: [
+            { role: 'system', content: 'You are a helpful assistant.' },
+            { role: 'user', content: 'hello!' }
+        ],
+        max_tokens: 20
+    };
+    const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+    if (response.status === 200) {
+        clear();
+        ConnectToSpeakerbot();
+        if (elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0) {
+            ConnectToTwitch();
+        }
+        if (elements.chatTheme.checked && elements.twitchChannelInput.value) {
+            startChatThemeSubmission();
+        } else {
+            writeToTerminal("Welcome adventurer, please choose a theme for your adventure: ");
+            gameData.state = "theme";
+        }
+        return true;
+    }
+    writeToTerminal('Your API key is invalid, does not have access to the model, or you have exceeded your quota. Please update your API key then type "start" to begin.');
+    return false;
 }
+
 
 
 async function checkForChanges(text, isViewer, callback){
@@ -1362,7 +1446,7 @@ async function runGameLoop(){
     if(gameData.state == "viewer_turn"){
         toggleInput(false)
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's next move. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`
+        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.twitch_chat.name}'s move by continuing the narrative only. Do not include any lists, numbered choices, or prompts for actions—just describe what happens next.`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: "generate the options"}],
@@ -1426,7 +1510,7 @@ async function runGameLoop(){
                     
                     // generate the AI response to the player's move
                     let endpoint = `v1/chat/completions`
-                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.twitch_chat.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move.  Do not display their stats in your response.`
+                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action by continuing the story. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next.`;
                     
                     
                     
@@ -2047,7 +2131,7 @@ async function viewerCharacterSelection(prunedHistory){
     activeVoteEntry = null
 
     let endpoint = `v1/chat/completions`
-    let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]}. Their character so far is ${gameData.characters.twitch_chat.description}. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`
+    let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]}. Their character so far is ${gameData.characters.twitch_chat.description}. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options. Make sure the options are only related to ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]} and not the story.`
     const body = {
         model: elements.gptModelSelect.value || 'gpt-4o-mini',
         messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: "generate the options"}],
@@ -2235,18 +2319,31 @@ async function viewerCharacterSelection(prunedHistory){
 async function executeCommand(input) {
     const [command, ...args] = input.split(' ');
 
+	if (command === 'dungeon' && args[0] === 'stop') {
+		ResetGame();
+		return;
+	}
+	else if(command==='dungeon' && args[0]==='continue'){
+		if(continueCallback){
+			const cb=continueCallback;
+			continueCallback=null;
+			cb();
+		}
+		return;
+	}
+
     if(gameData.state == "none"){
-        if (command === 'start') {
-            if(await checkSettings()){
-                gameData.state = "theme"
-            }
+        if(command==='dungeon' && args[0]==='start'){
+			gameData.state = "theme";
+            await checkSettings()
+            return;
         }
     }
     else if(gameData.state == "theme"){
         gameData.theme = input;
         // have the AI generate a starting setting
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. The player will pick their character after this. Keep it brief, at the end ask the player to describe their character, make sure to segway into it smoothly.`
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description of the starting location and situation. Do not provide any numbered lists, options, or choice prompts—only describe the scene and then ask the player to describe their character.`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: 'user', content: "Please describe the starting location and situation."}],
@@ -2584,29 +2681,50 @@ async function executeCommand(input) {
 checkSettings()
 
 function parseMinecraftColorCodes(text) {
-    const colorCodes = {
-        '&0': 'color:#000000',
-        '&1': 'color:#0000AA',
-        '&2': 'color:#00AA00',
-        '&3': 'color:#00AAAA',
-        '&4': 'color:#AA0000',
-        '&5': 'color:#AA00AA',
-        '&6': 'color:#FFAA00',
-        '&7': 'color:#AAAAAA',
-        '&8': 'color:#555555',
-        '&9': 'color:#5555FF',
-        '&a': 'color:#55FF55',
-        '&b': 'color:#55FFFF',
-        '&c': 'color:#FF5555',
-        '&d': 'color:#FF55FF',
-        '&e': 'color:#FFFF55',
-        '&f': 'color:#FFFFFF'
-    };
-    return text.replace(/(&[0-9a-f])/g, match => {
-        const style = colorCodes[match] || 'color:#FFFFFF';
-        return `<span style="${style}">`;
-    }) + '</span>'.repeat((text.match(/&[0-9a-f]/g) || []).length);
+	const colorCodes = {
+	  '&0': 'color:#000000',
+	  '&1': 'color:#0000AA',
+	  '&2': 'color:#00AA00',
+	  '&3': 'color:#00AAAA',
+	  '&4': 'color:#AA0000',
+	  '&5': 'color:#AA00AA',
+	  '&6': 'color:#FFAA00',
+	  '&7': 'color:#AAAAAA',
+	  '&8': 'color:#555555',
+	  '&9': 'color:#5555FF',
+	  '&a': 'color:#55FF55',
+	  '&b': 'color:#55FFFF',
+	  '&c': 'color:#FF5555',
+	  '&d': 'color:#FF55FF',
+	  '&e': 'color:#FFFF55',
+	  '&f': 'color:#FFFFFF'
+	};
+  
+	let result = '';
+	let open = false;
+  
+	// split keeps the color codes in the array
+	const parts = text.split(/(&[0-9a-f])/g);
+  
+	for (const part of parts) {
+	  if (/^&[0-9a-f]$/.test(part)) {
+		// close previous span if it was open
+		if (open) result += '</span>';
+		// open new span with the right color
+		const style = colorCodes[part] || colorCodes['&f'];
+		result += `<span style="${style}">`;
+		open = true;
+	  } else {
+		// regular text
+		result += part;
+	  }
+	}
+  
+	// close any remaining open span
+	if (open) result += '</span>';
+	return result;
 }
+  
 
 function cleanText(text){
     return text.replace(/&[0-9a-f]/g, "")
