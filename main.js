@@ -57,7 +57,7 @@ Please mainly use light colors, because the dark colors are hard to read on the 
 Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
 Do not format your text with markdown, this is not supported. Only use minecraft color codes.
 Use minecraft color codes where-ever you can.
-Do not ask players to roll dice at any point.
+If the user needs to roll a dice, for example to attack, or for damage, or a saving role, etc. just end your sentence with please roll a d20, 7 or above, etc. based on the player's stats.
 KEEP YOUR RESPONSES SHORT AND CONCISE, DO NOT EXCEED 100 WORDS.
 Respond in 500 characters or less.
 All your responses will be brief.
@@ -1450,7 +1450,7 @@ async function runGameLoop(){
     if(gameData.state == "viewer_turn"){
         toggleInput(false)
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.twitch_chat.name}'s move by continuing the narrative only. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's next move. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: "generate the options"}],
@@ -1514,7 +1514,7 @@ async function runGameLoop(){
                     
                     // generate the AI response to the player's move
                     let endpoint = `v1/chat/completions`
-                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action by continuing the story. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
+                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up, Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
                     
                     
                     
@@ -1593,7 +1593,6 @@ async function runGameLoop(){
                                         toggleInput(true)
                                     }else
                                     {
-                                        writeToTerminal("Player, please choose your next move by typing anything, such as 'look around' or 'go north'.")
                                         gameData.state = "viewer_turn"
                                         runGameLoop()
                                     }
@@ -2601,7 +2600,7 @@ async function executeCommand(input) {
             
             // generate the AI response to the player's move
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up,  Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`
             const body = {
                 model: elements.gptModelSelect.value || 'gpt-4o-mini',
                 messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.player.name} decides to ${input}`}],
