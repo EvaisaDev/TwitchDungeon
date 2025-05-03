@@ -2679,6 +2679,8 @@ async function executeCommand(input) {
     }
 }
 
+checkSettings()
+
 function parseMinecraftColorCodes(text) {
 	const colorCodes = {
 	  '&0': 'color:#000000',
@@ -2728,5 +2730,3 @@ function parseMinecraftColorCodes(text) {
 function cleanText(text){
     return text.replace(/&[0-9a-f]/g, "")
 }
-
-loadSetting()
