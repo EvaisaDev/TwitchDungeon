@@ -470,7 +470,8 @@ function startChatThemeSubmission() {
         timerLine.remove();
         let subs = Object.values(gameData.chatThemeSubmissions);
         if (!subs.length) subs = ['fantasy'];
-        let theme = subs[Math.floor(Math.random() * subs.length)];
+        // combine all the chat’s suggestions into one multi-word theme:
+        let theme = subs.join(' ');
         gameData.theme = theme;
         writeToTerminal(`Chat chose theme: ${theme}`, true);
         gameData.state = 'theme';
@@ -2677,8 +2678,6 @@ async function executeCommand(input) {
         }
     }
 }
-
-checkSettings()
 
 function parseMinecraftColorCodes(text) {
 	const colorCodes = {
