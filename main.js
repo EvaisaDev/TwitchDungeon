@@ -2327,7 +2327,7 @@ async function executeCommand(input) {
 		ResetGame();
 		return;
 	}
-	else if(command==='dungeon' && args[0]==='continue'){
+	else if((command==='dungeon' && args[0]==='continue') || command==='con'){
 		if(continueCallback){
 			const cb=continueCallback;
 			continueCallback=null;
