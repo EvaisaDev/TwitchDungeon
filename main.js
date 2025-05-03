@@ -2341,6 +2341,19 @@ async function executeCommand(input) {
             return;
         }
     }
+
+
+	if(command === 'dungeon' && args[0] === 'info' || command==='info'){
+		writeToLog(GetPlayerCharacterInfo(false), true)
+		// if twitch chat is playing too, show their info
+		if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
+			writeToLog("-------------------------", true)
+			writeToTerminal(GetPlayerCharacterInfo(true), true)
+		}
+		writeToLog("-------------------------", true)
+	}
+
+
     else if(gameData.state == "theme"){
         gameData.theme = input;
         // have the AI generate a starting setting
@@ -2583,14 +2596,6 @@ async function executeCommand(input) {
 
         // check if streamer just said "info"
         if(input.toLowerCase() == "info"){
-            writeToLog(GetPlayerCharacterInfo(false), true)
-            // if twitch chat is playing too, show their info
-            if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
-                writeToLog("-------------------------", true)
-                writeToTerminal(GetPlayerCharacterInfo(true), true)
-            }
-            writeToLog("-------------------------", true)
-            
         }else{
             writeToTerminal(`${gameData.characters.player.name} decides to ${input}`, true)
 
