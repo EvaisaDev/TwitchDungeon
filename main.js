@@ -2728,3 +2728,5 @@ function parseMinecraftColorCodes(text) {
 function cleanText(text){
     return text.replace(/&[0-9a-f]/g, "")
 }
+
+loadSetting()
