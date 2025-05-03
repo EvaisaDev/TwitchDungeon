@@ -268,38 +268,35 @@ function SaveGame(saveName){
 }
 
 function LoadGame(saveName){
-    let saveKey = `${saveSlotString}-${saveName}`
-    let saveData = JSON.parse(localStorage.getItem(saveKey))
-    
-    clear()
-
+    let saveKey = `${saveSlotString}-${saveName}`;
+    let saveData = JSON.parse(localStorage.getItem(saveKey));
+    clear();
     if(saveData){
-        gameData = saveData
-
-        console.log(gameData)
-
-        // restore terminal and log prints
+        gameData = saveData;
+        console.log(gameData);
         gameData.terminalPrints.forEach(print => {
-            writeToTerminal(print.text, true)
-        })
-
+            writeToTerminal(print.text, true);
+        });
         gameData.logPrints.forEach(print => {
-            writeToLog(print.text, true)
-        })
-
+            writeToLog(print.text, true);
+        });
         const outputLine = document.createElement('div');
         outputLine.innerHTML = `Game loaded from ${saveName}.`;
         elements.outputLog.appendChild(outputLine);
-
-        
-    }else{
-
+        if(gameData.died){
+            toggleInput(false, "Game Over");
+        } else if(gameData.state === "viewer_turn"){
+            runGameLoop();
+        } else {
+            toggleInput(true);
+        }
+    } else {
         const outputLine = document.createElement('div');
         outputLine.innerHTML = `No save data found.`;
         elements.outputLog.appendChild(outputLine);
-
     }
 }
+
 
 function DeleteSave(saveName){
     let saveKey = `${saveSlotString}-${saveName}`
