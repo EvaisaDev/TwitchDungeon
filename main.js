@@ -58,6 +58,9 @@ Do not let users just take control of the story by saying they find something, o
 Do not format your text with markdown, this is not supported. Only use minecraft color codes.
 Use minecraft color codes where-ever you can.
 Do not ask players to roll dice at any point.
+KEEP YOUR RESPONSES SHORT AND CONCISE, DO NOT EXCEED 100 WORDS.
+Respond in 500 characters or less.
+All your responses will be brief.
 `;
 
 
@@ -454,12 +457,12 @@ function startChatThemeSubmission() {
     gameData.chatThemeSubmissions = {};
     toggleInput(false);
     let duration = parseInt(elements.voteTime.value);
-    let [timerLine] = writeToTerminal(`Chat: suggest a theme (up to 3 words) using &c!suggesttheme [theme]&f. ${duration} seconds remaining.`, true);
+    let [timerLine] = writeToTerminal(`Chat: suggest a theme (up to 3 words) using &c!theme [theme]&f. ${duration} seconds remaining.`, true);
     let remaining = duration;
     let countdown = setInterval(() => {
         remaining--;
         if (remaining >= 0) {
-            timerLine.innerHTML = parseMinecraftColorCodes(`Chat: suggest a theme (up to 3 words) using &c!suggesttheme [theme]&f. ${remaining} seconds remaining.`);
+            timerLine.innerHTML = parseMinecraftColorCodes(`Chat: suggest a theme (up to 3 words) using &c!theme [theme]&f. ${remaining} seconds remaining.`);
         }
         if (remaining <= 0) {
             clearInterval(countdown);
@@ -714,8 +717,8 @@ async function ConnectToTwitch(){
             const messageText = parsed.params[1];
 
             if (gameData.state === 'chat_theme_submission') {
-                if (messageText.startsWith('!suggesttheme ')) {
-                    const suggestion = messageText.slice(14).trim();
+                if (messageText.startsWith('!theme ')) {
+                    const suggestion = messageText.slice(6).trim();
                     if (!gameData.chatThemeSubmissions[username] && suggestion.split(/\s+/).length <= 3) {
                         gameData.chatThemeSubmissions[username] = suggestion;
                         writeToTerminal(username + ' suggested: ' + suggestion, true);
