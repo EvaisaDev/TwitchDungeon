@@ -1447,7 +1447,7 @@ async function runGameLoop(){
     if(gameData.state == "viewer_turn"){
         toggleInput(false)
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.twitch_chat.name}'s move by continuing the narrative only. Do not include any lists, numbered choices, or prompts for actions—just describe what happens next.`;
+        let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.twitch_chat.name}'s move by continuing the narrative only. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: "generate the options"}],
@@ -1511,7 +1511,7 @@ async function runGameLoop(){
                     
                     // generate the AI response to the player's move
                     let endpoint = `v1/chat/completions`
-                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action by continuing the story. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next.`;
+                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action by continuing the story. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
                     
                     
                     
@@ -2344,7 +2344,7 @@ async function executeCommand(input) {
         gameData.theme = input;
         // have the AI generate a starting setting
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description of the starting location and situation. Do not provide any numbered lists, options, or choice prompts—only describe the scene and then ask the player to describe their character.`;
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description of the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. Keep it brief, Do not provide any numbered lists, options, or choice prompts—only describe the scene and then ask the player to describe their character.`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: 'user', content: "Please describe the starting location and situation."}],
@@ -2598,7 +2598,7 @@ async function executeCommand(input) {
             
             // generate the AI response to the player's move
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response.`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`
             const body = {
                 model: elements.gptModelSelect.value || 'gpt-4o-mini',
                 messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.player.name} decides to ${input}`}],
