@@ -17,6 +17,7 @@ const elements = {
     speakerbotPort: 'speakerbot-port',
     narratorVoiceAlias: 'narrator-voice-alias',
     autoContinue: 'auto-continue',
+    autoContinueTime: 'auto-continue-time',
     chatTheme: 'chat-theme'
 };
 
@@ -95,7 +96,7 @@ function saveSetting(element, storageKey, isCheckbox = false) {
 loadSetting(elements.apiKeyInput, 'twitchdungeon-apiKey');
 loadSetting(elements.twitchChannelInput, 'twitchdungeon-channel');
 loadSetting(elements.streamerParticipates, 'twitchdungeon-streamer-participates', true, true);
-loadSetting(elements.voteTime, 'twitchdungeon-vote-time', 30);
+loadSetting(elements.voteTime, 'twitchdungeon-vote-time', 60);
 loadSetting(elements.aiImages, 'twitchdungeon-ai-images', false, true);
 loadSetting(elements.useTTS, 'twitchdungeon-use-tts', false, true);
 loadSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address', 'localhost');
@@ -103,6 +104,9 @@ loadSetting(elements.speakerbotPort, 'twitchdungeon-speakerbot-port', 7580);
 loadSetting(elements.narratorVoiceAlias, 'twitchdungeon-narrator-voice-alias', '');
 loadSetting(elements.autoContinue,'twitchdungeon-auto-continue',false,true);
 loadSetting(elements.chatTheme,'twitchdungeon-chat-theme',false,true);
+loadSetting(elements.autoContinueTime, 'twitchdungeon-auto-continue-time', 30);
+
+
 let maxWordsValue = loadSetting(elements.maxWords, 'twitchdungeon-max-words', 200);
 gptBasePrompt += `The maximum word count for your responses is ${maxWordsValue}.`;
 
@@ -122,6 +126,7 @@ elements.maxWords.addEventListener('input', () => {
 });
 elements.autoContinue.addEventListener('input',()=>saveSetting(elements.autoContinue,'twitchdungeon-auto-continue',true));
 elements.chatTheme.addEventListener('input',()=>saveSetting(elements.chatTheme,'twitchdungeon-chat-theme',true));
+elements.autoContinueTime.addEventListener('input', () => saveSetting(elements.autoContinueTime, 'twitchdungeon-auto-continue-time'));
 
 
 let gameDataTemplate = {
@@ -976,15 +981,29 @@ elements.inputField.addEventListener('keydown', function(event) {
         executeCommand(command);
     }
 });
-
 async function waitForKeypress(callback){
-    if(elements.autoContinue.checked){
-        callback();
+    if (elements.autoContinue.checked){
+        toggleInput(false);
+        const time = parseInt(elements.autoContinueTime.value, 10) || 0;
+        let remaining = time;
+        elements.inputField.placeholder = `Continuing in ${remaining} seconds...`;
+        const intervalId = setInterval(() => {
+            remaining--;
+            if (remaining > 0){
+                elements.inputField.placeholder = `Continuing in ${remaining} seconds...`;
+            }
+        }, 1000);
+        setTimeout(() => {
+            clearInterval(intervalId);
+            callback();
+        }, time * 1000);
         return;
     }
-    continueCallback=callback
-    toggleInput(true)
+    continueCallback = callback;
+    toggleInput(true);
 }
+
+
 
 async function checkSettings() {
     if (!elements.apiKeyInput.value) {
