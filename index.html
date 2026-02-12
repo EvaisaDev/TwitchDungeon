@@ -21,7 +21,17 @@
             </div>
 
             <label for="gpt-model-select">GPT Model:</label>
-            <input type="text" id="gpt-model-select" placeholder="i.e. gpt-4o" value="gpt-4o-mini"><br>
+            <select id="gpt-model-select">
+                <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                <option value="gpt-4.1">gpt-4.1</option>
+                <option value="gpt-4o-mini" selected>gpt-4o-mini</option>
+                <option value="gpt-4o">gpt-4o</option>
+                <option value="gpt-5-nano">gpt-5-nano</option>
+                <option value="gpt-5-mini">gpt-5-mini</option>
+                <option value="gpt-5.1">gpt-5.1</option>
+                <option value="gpt-5.1-codex-mini">gpt-5.1-codex-mini</option>
+                <option value="gpt-5.2">gpt-5.2</option>
+            </select><br>
 
             <!-- max words to generate -->
             <label for="max-words">Max Words:</label>
@@ -179,27 +189,7 @@
         document.getElementById('terminal').addEventListener('click', function() {
             document.getElementById('input').focus();
         });
-
-        function generateSaveList() {
-            const saveList = document.getElementById('save-list');
-            const saves = GetSaveList();
-            saveList.innerHTML = '';
-
-            saves.forEach(save => {
-                const listItem = document.createElement('li');
-                listItem.innerHTML = `
-                    <span class="save-button" onclick="LoadGame('${save}')">${save}</span>
-                    <button class="delete-button" onclick="DeleteSave('${save}'); generateSaveList();"><i class="fas fa-trash"></i></button>
-                `;
-                saveList.appendChild(listItem);
-            });
-        }
-
-        // Populate save list on load
-        window.addEventListener('load', function() {
-            generateSaveList()
-        });
     </script>
-    <script src="main.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
 </html>

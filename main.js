@@ -1,3 +1,5 @@
+import { callUnifiedAI } from './unified-ai.js';
+
 const elements = {
     inputField: 'input',
     outputDiv: 'output-story',
@@ -56,7 +58,7 @@ Make sure to type &f after you are done coloring your text to reset the color to
 Example: "&4Redwood forest&f" will color the text "Redwood forest" red.
 Please mainly use light colors, because the dark colors are hard to read on the dark website.
 Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
-Do not format your text with markdown, this is not supported. Only use minecraft color codes.
+You can use limited markdown formatting ONLY: **text** for bold and *text* for italic. Do NOT use other markdown features like headers (#), lists (-), code blocks, or links. Only use **bold** and *italic*.
 Use minecraft color codes where-ever you can.
 KEEP YOUR RESPONSES SHORT AND CONCISE, DO NOT EXCEED 100 WORDS.
 Respond in 500 characters or less.
@@ -728,7 +730,7 @@ async function ConnectToTwitch(){
             }
 
             const tags = parsed.tags || {};
-            const isBroadcaster = tags.badges && tags.badges.includes('broadcaster/1');
+            const isBroadcaster = tags.badges && (typeof tags.badges === 'string' ? tags.badges.includes('broadcaster/1') : tags.badges['broadcaster']);
             const isMod = tags.mod === '1';
 
             if ((isMod || isBroadcaster) && messageText.startsWith('>')) {
@@ -899,7 +901,35 @@ async function HandleStream(stream, callback, done) {
 	} catch (err) {
 	  // most likely an AbortError — just swallow and exit
 	}
-  }
+}
+
+function parseStreamChunk(text) {
+	text = text.trim();
+	
+	if (!text || text.startsWith('event:')) {
+		return null;
+	}
+	
+	if (text.startsWith('data:')) {
+		text = text.substring(5).trim();
+	}
+	
+	try {
+		const json = JSON.parse(text);
+		
+		if (json.type === 'response.output_text.delta' && json.delta) {
+			return json.delta;
+		}
+		
+		if (json.data && json.data.choices && json.data.choices.length > 0) {
+			return json.data.choices[0].delta.content;
+		}
+	} catch (e) {
+		return null;
+	}
+	
+	return null;
+}
   
 
 let continueCallback = null
@@ -915,20 +945,111 @@ function toggleInput(enabled, newPlaceholder = null) {
     }
 }
 
-function GPTRequest(endpoint, apiKey, body) {
+async function GPTRequest(endpoint, apiKey, body) {
 	const controller = new AbortController();
 	__controllers.push(controller);
   
-	return fetch(`https://api.openai.com/${endpoint}`, {
-	  method:  'POST',
-	  headers: {
-		'Content-Type':  'application/json',
-		'Authorization': `Bearer ${apiKey}`
-	  },
-	  body:       JSON.stringify(body),
-	  signal:     controller.signal
-	});
-  }
+	const isImageGeneration = endpoint.includes('images/generations');
+	
+	if (isImageGeneration) {
+		return fetch(`https://api.openai.com/${endpoint}`, {
+			method:  'POST',
+			headers: {
+				'Content-Type':  'application/json',
+				'Authorization': `Bearer ${apiKey}`
+			},
+			body:       JSON.stringify(body),
+			signal:     controller.signal
+		});
+	}
+	
+	const useStreaming = body.stream !== false;
+	
+	if (useStreaming) {
+		const streamBodyData = {
+			model: body.model,
+			input: body.messages,
+			stream: true
+		};
+		
+		if (body.response_format) {
+			if (body.response_format.type === 'json_object') {
+				streamBodyData.text = {
+					format: {
+						type: 'json_schema',
+						name: 'response',
+						schema: {
+							type: 'object',
+							properties: {},
+							additionalProperties: true
+						},
+						strict: true
+					}
+				};
+			} else if (body.response_format.type === 'json_schema') {
+				streamBodyData.text = {
+					format: {
+						type: 'json_schema',
+						name: body.response_format.json_schema.name,
+						schema: body.response_format.json_schema.schema,
+						strict: true
+					}
+				};
+			}
+		}
+		
+		return fetch('https://api.openai.com/v1/responses', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'Authorization': `Bearer ${apiKey}`
+			},
+			body: JSON.stringify(streamBodyData),
+			signal: controller.signal
+		});
+	}
+	
+	const config = {
+		apiKey: apiKey,
+		apiModel: body.model
+	};
+	
+	let jsonSchema = null;
+	if (body.response_format && body.response_format.type === 'json_object') {
+		jsonSchema = {
+			name: 'response',
+			schema: {
+				type: 'object',
+				properties: {},
+				additionalProperties: true
+			}
+		};
+	} else if (body.response_format && body.response_format.type === 'json_schema') {
+		jsonSchema = body.response_format.json_schema;
+	}
+	
+	try {
+		const result = await callUnifiedAI(body.messages, jsonSchema, config);
+		
+		return {
+			status: 200,
+			ok: true,
+			data: {
+				choices: [{
+					message: {
+						content: typeof result === 'string' ? result : JSON.stringify(result)
+					}
+				}]
+			}
+		};
+	} catch (error) {
+		return {
+			status: error.message.includes('API Error') ? 400 : 500,
+			ok: false,
+			error: error.message
+		};
+	}
+}
 
 
 
@@ -1015,7 +1136,8 @@ async function checkSettings() {
             { role: 'system', content: 'You are a helpful assistant.' },
             { role: 'user', content: 'hello!' }
         ],
-        max_tokens: 20
+        max_tokens: 20,
+        stream: false
     };
     const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
     if (response.status === 200) {
@@ -1428,34 +1550,25 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: role, content: text}],
-            max_tokens: 200
+            max_tokens: 200,
+            stream: false
         };
 
         const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
-            let output = "";
-            HandleStream(response.body, (text) => {
-                output += text
+            try {
+                const compressed = response.data.choices[0].message.content;
+                AddToHistory(compressed, role);
+                console.log("Added to history: " + compressed);
+                resolve();
+            } catch (error) {
+                console.log(error);
+                reject();
             }
-            , () => {
-                try {
-                    // parse json
-                    let data = JSON.parse(output)
-                    let compressed = data.choices[0].message.content
-                    // add the compressed text to the gameData.history
-                    AddToHistory(compressed, role)
-                    console.log("Added to history: " + compressed)
-                    resolve()
-                }   
-                catch (error) {
-                    console.log(error)
-                    reject()
-                }
-            });
-        }else{
-            console.log(response)
-            reject()
+        } else {
+            console.log(response);
+            reject();
         }
     })
 }
@@ -1490,28 +1603,18 @@ async function runGameLoop(){
                     
                 },
             },
+            stream: false
         };
 
         
         const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
-            let output = "";
-
-            console.log(response.body)
-
-            let json = ""
-            HandleStream(response.body, (text) => {
-                json += text
-            }, () => {
-                // parse json
-                let data = JSON.parse(json)
-                let options = JSON.parse(data.choices[0].message.content);
+            try {
+                let options = JSON.parse(response.data.choices[0].message.content);
 
                 let voteOptions = []
                 options.options.forEach(option => {
-                    // if option starts with a numbering, remove it
-                    // such as 1. Go North
                     option = option.replace(/^\d+\.\s*/, "")
                     voteOptions.push({text: option.trim()})
                 });
@@ -1549,34 +1652,14 @@ async function runGameLoop(){
                         
                         HandleStream(response.body, (text) => {
 
-                            // make sure text is a string and not empty
                             if (typeof text !== 'string' || text.trim() === '') {
                                 return;
                             }
 
-                            text = text.trim();
-                            // add brackets to make it valid json
-                            text = text.replace('data: ', '"data": ');
-                            text = `{${text}}`;
-                            // replace data: with "data":
-                            
-
-                            // check if chunk is valid json
-                            try {
-                                const json = JSON.parse(text);
-                                // if chunk is valid json, check if it has a completion
-                                if (json.data && json.data.choices && json.data.choices.length > 0) {
-                                    const completion = json.data.choices[0].delta.content
-                                    // check if completion is <empty string>
-                                    if (completion && completion.trim().length > 0) {
-                                        console.log(completion.toString())
-                                        output += completion;
-                                    }
-                                }
-                                
-                            } catch (e) {
-                                console.log(text)
-
+                            const completion = parseStreamChunk(text);
+                            if (completion && completion.trim().length > 0) {
+                                console.log(completion.toString())
+                                output += completion;
                             }
                             
 
@@ -1621,7 +1704,10 @@ async function runGameLoop(){
 
 
                 })
-            });
+            } catch (error) {
+                console.error('Error parsing vote options:', error);
+                toggleInput(true);
+            }
         }
 
     }
@@ -1719,35 +1805,27 @@ async function startViewerCharacterSelection(prunedHistory){
                 
             },
         },
+        stream: false
     };
 
 
     const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
     if (response.status === 200) {
-        let output = "";
-
-        let json = ""
-        HandleStream(response.body, (text) => {
-            json += text
-        }, () => {
-        
-            console.log(json)
-            // parse json
-            let data = JSON.parse(json)
-            let flow = JSON.parse(data.choices[0].message.content);
+        try {
+            let flow = JSON.parse(response.data.choices[0].message.content);
 
             gameData.viewerCharacterSelectionFlow = flow.flow
 
-            // if gameData.viewerCharacterSelectionFlow does not contain "name", add it
             if(!gameData.viewerCharacterSelectionFlow.includes("Name") && !gameData.viewerCharacterSelectionFlow.includes("name")){
                 gameData.viewerCharacterSelectionFlow.push("Name")
             }
 
             gameData.viewerCharacterSelectionState = 0
             viewerCharacterSelection(prunedHistory)
-    
-        });
+        } catch (error) {
+            console.error('Error parsing character selection flow:', error);
+        }
     }
 
 }
@@ -1782,34 +1860,14 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
         
         HandleStream(response.body, (text) => {
 
-            // make sure text is a string and not empty
             if (typeof text !== 'string' || text.trim() === '') {
                 return;
             }
 
-            text = text.trim();
-            // add brackets to make it valid json
-            text = text.replace('data: ', '"data": ');
-            text = `{${text}}`;
-            // replace data: with "data":
-            
-
-            // check if chunk is valid json
-            try {
-                const json = JSON.parse(text);
-                // if chunk is valid json, check if it has a completion
-                if (json.data && json.data.choices && json.data.choices.length > 0) {
-                    const completion = json.data.choices[0].delta.content
-                    // check if completion is <empty string>
-                    if (completion && completion.trim().length > 0) {
-                        console.log(completion.toString())
-                        output += completion;
-                    }
-                }
-                
-            } catch (e) {
-                console.log(text)
-
+            const completion = parseStreamChunk(text);
+            if (completion && completion.trim().length > 0) {
+                console.log(completion.toString())
+                output += completion;
             }
             
 
@@ -1926,67 +1984,21 @@ async function ParseCharacterStats(text, isViewer, callback){
                 
             },
         },
+        stream: false
     };
     
     const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
     if (response.status === 200) {
-        let output = "";
-
-        let json = ""
-        HandleStream(response.body, (text) => {
-            json += text
+        try {
+            let data = JSON.parse(response.data.choices[0].message.content);
+            callback(data);
+        } catch (error) {
+            console.error('Error parsing character stats:', error);
+            callback();
         }
-        , () => {
-            // parse json
-            let content = JSON.parse(json)
-            
-            let data = JSON.parse(content.choices[0].message.content)
-
-			/*
-            if(isViewer){
-                gameData.characters.twitch_chat.description = data.description
-                gameData.characters.twitch_chat.health = data.health
-                gameData.characters.twitch_chat.max_health = data.max_health
-                gameData.characters.twitch_chat.gold = data.gold
-                gameData.characters.twitch_chat.inventory = data.inventory
-                gameData.characters.twitch_chat.status_effects = data.status_effects
-                gameData.characters.twitch_chat.abilities = data.abilities
-                gameData.characters.twitch_chat.stats = {
-                    strength: data.strength,
-                    dexterity: data.dexterity,
-                    constitution: data.constitution,
-                    intelligence: data.intelligence,
-                    wisdom: data.wisdom,
-                    charisma: data.charisma
-                }
-            
-
-            }else{
-                gameData.characters.player.description = data.description
-                gameData.characters.player.health = data.health
-                gameData.characters.player.max_health = data.max_health
-                gameData.characters.player.gold = data.gold
-                gameData.characters.player.inventory = data.inventory
-                gameData.characters.player.status_effects = data.status_effects
-                gameData.characters.player.abilities = data.abilities
-                gameData.characters.player.stats = {
-                    strength: data.strength,
-                    dexterity: data.dexterity,
-                    constitution: data.constitution,
-                    intelligence: data.intelligence,
-                    wisdom: data.wisdom,
-                    charisma: data.charisma
-                }
-        
-
-            }
-			*/
-
-            callback(data)
-        });
-    }else{
-        callback()
+    } else {
+        callback();
     }
 }
 
@@ -2098,23 +2110,21 @@ async function FindCharactersInScene(text){
 				
 			},
 		},
+		stream: false
 	};
 
 	return new Promise((resolve, reject) => {
 		GPTRequest(endpoint, elements.apiKeyInput.value, body).then((response) => {
 			if (response.status === 200) {
-				let json = ""
-				HandleStream(response.body, (text) => {
-					json += text
+				try {
+					let characters = JSON.parse(response.data.choices[0].message.content);
+					resolve(characters);
+				} catch (error) {
+					console.error('Error parsing scene characters:', error);
+					reject(error);
 				}
-				, () => {
-					// parse json
-					let data = JSON.parse(json)
-					let characters = JSON.parse(data.choices[0].message.content)
-					resolve(characters)
-				});
-			}else{
-				reject()
+			} else {
+				reject();
 			}
 		})
 	})
@@ -2174,6 +2184,7 @@ async function viewerCharacterSelection(prunedHistory){
                 
             },
         },
+        stream: false
     };
     
     let isName = gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState].toLowerCase() == "name"
@@ -2181,17 +2192,9 @@ async function viewerCharacterSelection(prunedHistory){
     const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
     if (response.status === 200) {
-        let output = "";
-
-        console.log(response.body)
-        toggleInput(false)
-        let json = ""
-        HandleStream(response.body, (text) => {
-            json += text
-        }, () => {
-            // parse json
-            let data = JSON.parse(json)
-            let options = JSON.parse(data.choices[0].message.content);
+        try {
+            toggleInput(false);
+            let options = JSON.parse(response.data.choices[0].message.content);
 
             let voteOptions = []
             options.options.forEach(option => {
@@ -2230,59 +2233,37 @@ async function viewerCharacterSelection(prunedHistory){
                     if (response.status === 200) {
                         compressAndAddToHistory( gameData.characters.twitch_chat.description, "user")
                         prunedHistory.push({content: gameData.characters.twitch_chat.description, role: "user"})
-                        let [msg, save_entry] = writeToTerminal(`test`, true);
+                        let [msg, save_entry] = writeToTerminal(``, true);
                         let output = "";
                         let ttsText = ""
                         
                         HandleStream(response.body, (text) => {
 
-                            // make sure text is a string and not empty
                             if (typeof text !== 'string' || text.trim() === '') {
                                 return;
                             }
 
-                            text = text.trim();
-                            // add brackets to make it valid json
-                            text = text.replace('data: ', '"data": ');
-                            text = `{${text}}`;
-                            // replace data: with "data":
-                            
+                            const completion = parseStreamChunk(text);
+                            if (completion && completion.trim().length > 0) {
+                                console.log(completion.toString())
+                                output += completion;
 
-                            // check if chunk is valid json
-                            try {
-                                const json = JSON.parse(text);
-                                // if chunk is valid json, check if it has a completion
-                                if (json.data && json.data.choices && json.data.choices.length > 0) {
-                                    const completion = json.data.choices[0].delta.content
-                                    // check if completion is <empty string>
-                                    if (completion && completion.trim().length > 0) {
-                                        console.log(completion.toString())
-                                        output += completion;
+                                ttsText += completion
 
-                                        ttsText += completion
-
-                                        // split sentence by . or ! or ?
-                                        var sentences = ttsText.split(/(?<=[.!?])\s*/);
-                                        if(sentences.length > 1){
-                                            let firstSentence = sentences.shift().trim()
-                                            ttsText = sentences.join("")
-                                            TryToSpeak(firstSentence)
-                                        }
-
-                                        msg.innerHTML = parseMinecraftColorCodes(output);
-
-                                        // update save entry
-                                        if (save_entry) {
-                                            save_entry.text = output;
-                                        }
-
-                                        elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
-                                    }
+                                var sentences = ttsText.split(/(?<=[.!?])\s*/);
+                                if(sentences.length > 1){
+                                    let firstSentence = sentences.shift().trim()
+                                    ttsText = sentences.join("")
+                                    TryToSpeak(firstSentence)
                                 }
-                                
-                            } catch (e) {
-                                console.log(text)
 
+                                msg.innerHTML = parseMinecraftColorCodes(output);
+
+                                if (save_entry) {
+                                    save_entry.text = output;
+                                }
+
+                                elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                             }
                             
 
@@ -2325,7 +2306,10 @@ async function viewerCharacterSelection(prunedHistory){
                     }
                 }
             })
-        });
+        } catch (error) {
+            console.error('Error parsing viewer character selection options:', error);
+            toggleInput(true);
+        }
         
 
     }
@@ -2384,61 +2368,38 @@ async function executeCommand(input) {
 
         const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
         if (response.status === 200) {
-            let [msg, save_entry] = writeToTerminal(`test`, true);
+            let [msg, save_entry] = writeToTerminal(``, true);
             let output = "";
             let ttsText = ""
             toggleInput(false)
             HandleStream(response.body, (text) => {
 
-                // make sure text is a string and not empty
                 if (typeof text !== 'string' || text.trim() === '') {
                     return;
                 }
 
-                text = text.trim();
-                // add brackets to make it valid json
-                text = text.replace('data: ', '"data": ');
-                text = `{${text}}`;
-                // replace data: with "data":
-                
+                const completion = parseStreamChunk(text);
+                if (completion && completion.trim().length > 0) {
+                    output += completion;
 
-                // check if chunk is valid json
-                try {
-                    const json = JSON.parse(text);
-                    // if chunk is valid json, check if it has a completion
-                    if (json.data && json.data.choices && json.data.choices.length > 0) {
-                        const completion = json.data.choices[0].delta.content
-                        // check if completion is <empty string>
-                        if (completion && completion.trim().length > 0) {
-                            output += completion;
-
-                            ttsText += completion
-                            // split sentence by . or ! or ?
-                            var sentences = ttsText.split(/(?<=[.!?])\s*/);
-                            if(sentences.length > 1){
-                                let firstSentence = sentences.shift().trim()
-                                ttsText = sentences.join("")
-                                TryToSpeak(firstSentence)
-                            }
-
-                            msg.innerHTML = parseMinecraftColorCodes(output);
-
-                            console.log(completion)
-
-                            // update save entry
-                            if (save_entry) {
-                                save_entry.text = output;
-                            }
-
-                            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
-                        }
+                    ttsText += completion
+                    var sentences = ttsText.split(/(?<=[.!?])\s*/);
+                    if(sentences.length > 1){
+                        let firstSentence = sentences.shift().trim()
+                       ttsText = sentences.join("")
+                        TryToSpeak(firstSentence)
                     }
-                    
-                } catch (e) {
-                    //console.log(text)
 
+                    msg.innerHTML = parseMinecraftColorCodes(output);
+
+                    console.log(completion)
+
+                    if (save_entry) {
+                        save_entry.text = output;
+                    }
+
+                    elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                 }
-                
 
             }, async () => {
                 toggleInput(false)
@@ -2491,13 +2452,12 @@ async function executeCommand(input) {
         gameData.characters.player.name = input
 
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. The player has described their character. Please summarize their character, add additional details if necessary. You may also give them some starting items. Remember, the description provided IS the player character themselves, not a companion or someone at their side.`
 
-        // check if
         if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
-            prompt = prompt + ` end with "I see you have someone with you, who is that?"`
+            prompt = prompt + ` After describing the player character, note that they have other adventurers (viewers) with them, and ask "Who are your companions?"`
         }else{
-            prompt = prompt + ` end by asking the player what they wish to do next, with a little bit more story info.`
+            prompt = prompt + ` End by asking the player what they wish to do next, with a little bit more story info.`
         }
 
         const body = {
@@ -2511,63 +2471,40 @@ async function executeCommand(input) {
 
         if (response.status === 200) {
 
-            let [msg, save_entry] = writeToTerminal(`test`, true);
+            let [msg, save_entry] = writeToTerminal(``, true);
             let output = "";
             let ttsText = ""
             toggleInput(false)
             HandleStream(response.body, (text) => {
 
-                // make sure text is a string and not empty
                 if (typeof text !== 'string' || text.trim() === '') {
                     return;
                 }
 
-                text = text.trim();
-                // add brackets to make it valid json
-                text = text.replace('data: ', '"data": ');
-                text = `{${text}}`;
-                // replace data: with "data":
-                
+                const completion = parseStreamChunk(text);
+                if (completion && completion.trim().length > 0) {
+                    output += completion;
 
-                // check if chunk is valid json
-                try {
-                    const json = JSON.parse(text);
-                    // if chunk is valid json, check if it has a completion
-                    if (json.data && json.data.choices && json.data.choices.length > 0) {
-                        const completion = json.data.choices[0].delta.content
-                        // check if completion is <empty string>
-                        if (completion && completion.trim().length > 0) {
-                            output += completion;
-
-                            // add to tts text, if it contains a ending . or ! or ?, split and speak the first sentence, and put the rest back in ttsText
-                            ttsText += completion
-                            var sentences = ttsText.split(/(?<=[.!?])\s*/);
-                            if(sentences.length > 1){
-                                let firstSentence = sentences.shift().trim()
-                                ttsText = sentences.join("")
-                                TryToSpeak(firstSentence)
-                            }
-
-                            msg.innerHTML = parseMinecraftColorCodes(output);
-
-                            
-
-
-                            // update save entry
-                            if (save_entry) {
-                                save_entry.text = output;
-                            }
-
-
-                            elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
-                        }
+                    ttsText += completion
+                    var sentences = ttsText.split(/(?<=[.!?])\s*/);
+                    if(sentences.length > 1){
+                        let firstSentence = sentences.shift().trim()
+                        ttsText = sentences.join("")
+                        TryToSpeak(firstSentence)
                     }
-                    
-                } catch (e) {
-                    console.log(text)
 
+                    msg.innerHTML = parseMinecraftColorCodes(output);
+
+                    
+
+
+                    if (save_entry) {
+                        save_entry.text = output;
+                    }
+
+
+                    elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
                 }
-                
 
             }, async () => {
                 toggleInput(false)
@@ -2637,34 +2574,14 @@ async function executeCommand(input) {
                 
                 HandleStream(response.body, (text) => {
 
-                    // make sure text is a string and not empty
                     if (typeof text !== 'string' || text.trim() === '') {
                         return;
                     }
 
-                    text = text.trim();
-                    // add brackets to make it valid json
-                    text = text.replace('data: ', '"data": ');
-                    text = `{${text}}`;
-                    // replace data: with "data":
-                    
-
-                    // check if chunk is valid json
-                    try {
-                        const json = JSON.parse(text);
-                        // if chunk is valid json, check if it has a completion
-                        if (json.data && json.data.choices && json.data.choices.length > 0) {
-                            const completion = json.data.choices[0].delta.content
-                            // check if completion is <empty string>
-                            if (completion && completion.trim().length > 0) {
-                                console.log(completion.toString())
-                                output += completion;
-                            }
-                        }
-                        
-                    } catch (e) {
-                        console.log(text)
-
+                    const completion = parseStreamChunk(text);
+                    if (completion && completion.trim().length > 0) {
+                        console.log(completion.toString())
+                        output += completion;
                     }
                 
 
@@ -2723,27 +2640,25 @@ function parseMinecraftColorCodes(text) {
 	  '&f': 'color:#FFFFFF'
 	};
   
+	text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+	text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  
 	let result = '';
 	let open = false;
   
-	// split keeps the color codes in the array
 	const parts = text.split(/(&[0-9a-f])/g);
   
 	for (const part of parts) {
 	  if (/^&[0-9a-f]$/.test(part)) {
-		// close previous span if it was open
 		if (open) result += '</span>';
-		// open new span with the right color
 		const style = colorCodes[part] || colorCodes['&f'];
 		result += `<span style="${style}">`;
 		open = true;
 	  } else {
-		// regular text
 		result += part;
 	  }
 	}
   
-	// close any remaining open span
 	if (open) result += '</span>';
 	return result;
 }
@@ -2752,3 +2667,27 @@ function parseMinecraftColorCodes(text) {
 function cleanText(text){
     return text.replace(/&[0-9a-f]/g, "")
 }
+
+function generateSaveList() {
+    const saveList = document.getElementById('save-list');
+    const saves = GetSaveList();
+    saveList.innerHTML = '';
+
+    saves.forEach(save => {
+        const listItem = document.createElement('li');
+        listItem.innerHTML = `
+            <span class="save-button" onclick="LoadGame('${save}')">${save}</span>
+            <button class="delete-button" onclick="DeleteSave('${save}'); generateSaveList();"><i class="fas fa-trash"></i></button>
+        `;
+        saveList.appendChild(listItem);
+    });
+}
+
+window.GetSaveList = GetSaveList;
+window.DeleteSave = DeleteSave;
+window.LoadGame = LoadGame;
+window.generateSaveList = generateSaveList;
+
+window.addEventListener('load', function() {
+    generateSaveList();
+});
