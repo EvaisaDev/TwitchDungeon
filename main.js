@@ -1,4 +1,4 @@
-import { callUnifiedAI } from './unified-ai.js';
+﻿import { callUnifiedAI } from './unified-ai.js';
 
 const elements = {
     inputField: 'input',
@@ -13,6 +13,7 @@ const elements = {
     toggleApiKey: 'toggle-api-key',
     streamerParticipates: 'take-turns',
     voteTime: 'vote-time',
+    suggestionTime: 'suggestion-time',
     aiImages: 'ai-images',
     useTTS: 'use-tts',
     speakerbotAddress: 'speakerbot-address',
@@ -20,7 +21,8 @@ const elements = {
     narratorVoiceAlias: 'narrator-voice-alias',
     autoContinue: 'auto-continue',
     autoContinueTime: 'auto-continue-time',
-    chatTheme: 'chat-theme'
+    chatTheme: 'chat-theme',
+    freeformVotes: 'freeform-votes'
 };
 
 
@@ -37,6 +39,15 @@ In combat, you can let players attack, defend, or use items in their inventory. 
 If player's health reaches 0, they lose the game.
 Only let players use items and abilities that they have found or learned. Do not let them use items or abilities that they do not have.
 Note, you can use minecraft color codes to color important parts of your text. (make sure to put &f at the end of your colored text to reset the color to white)
+You MUST color the following with minecraft color codes every time they appear:
+- Item names (use &6 gold/orange)
+- Character/NPC names (use &b cyan or &d pink)
+- Skill/ability names (use &a green)
+- Location names (use &e yellow)
+- Status effects (use &c red for negative, &a green for positive)
+- Stats like Health, Strength, etc. (use &c for health, &9 for mana, etc.)
+- Any keyword or important term that should stand out
+NEVER leave names, items, skills, or locations uncolored. Use a variety of colors to make text vibrant.
 Here is the list:
 '&0': 'color:#000000',
 '&1': 'color:#0000AA',
@@ -60,6 +71,11 @@ Please mainly use light colors, because the dark colors are hard to read on the 
 Do not let users just take control of the story by saying they find something, or by using items or abilities they do not have access to.
 You can use limited markdown formatting ONLY: **text** for bold and *text* for italic. Do NOT use other markdown features like headers (#), lists (-), code blocks, or links. Only use **bold** and *italic*.
 Use minecraft color codes where-ever you can.
+CRITICAL FORMATTING: Always use line breaks (newlines) for readability:
+- Put each stat on its own line (Health: X\\nStrength: Y)
+- Put each item on its own line
+- Separate different sections with blank lines (double newlines)
+- Never put multiple list items on the same line
 KEEP YOUR RESPONSES SHORT AND CONCISE, DO NOT EXCEED 100 WORDS.
 Respond in 500 characters or less.
 All your responses will be brief.
@@ -99,6 +115,7 @@ loadSetting(elements.apiKeyInput, 'twitchdungeon-apiKey');
 loadSetting(elements.twitchChannelInput, 'twitchdungeon-channel');
 loadSetting(elements.streamerParticipates, 'twitchdungeon-streamer-participates', true, true);
 loadSetting(elements.voteTime, 'twitchdungeon-vote-time', 60);
+loadSetting(elements.suggestionTime, 'twitchdungeon-suggestion-time', 30);
 loadSetting(elements.aiImages, 'twitchdungeon-ai-images', false, true);
 loadSetting(elements.useTTS, 'twitchdungeon-use-tts', false, true);
 loadSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address', 'localhost');
@@ -117,6 +134,7 @@ elements.apiKeyInput.addEventListener('input', () => saveSetting(elements.apiKey
 elements.twitchChannelInput.addEventListener('input', () => saveSetting(elements.twitchChannelInput, 'twitchdungeon-channel'));
 elements.streamerParticipates.addEventListener('input', () => saveSetting(elements.streamerParticipates, 'twitchdungeon-streamer-participates', true));
 elements.voteTime.addEventListener('input', () => saveSetting(elements.voteTime, 'twitchdungeon-vote-time'));
+elements.suggestionTime.addEventListener('input', () => saveSetting(elements.suggestionTime, 'twitchdungeon-suggestion-time'));
 elements.aiImages.addEventListener('input', () => saveSetting(elements.aiImages, 'twitchdungeon-ai-images', true));
 elements.useTTS.addEventListener('input', () => saveSetting(elements.useTTS, 'twitchdungeon-use-tts', true));
 elements.speakerbotAddress.addEventListener('input', () => saveSetting(elements.speakerbotAddress, 'twitchdungeon-speakerbot-address'));
@@ -135,6 +153,7 @@ let gameDataTemplate = {
     state: "none",
     theme: "fantasy",
 	chatThemeSubmissions: {},
+	freeformActionSubmissions: {},
     characters: {
         player: {
             description: "",
@@ -226,7 +245,7 @@ function ResetGame(){
 	__controllers.forEach(c => c.abort());
 	__controllers.length = 0;
   
-	// now your existing reset logic…
+	// now your existing reset logicâ€¦
 	gameData = JSON.parse(JSON.stringify(gameDataTemplate));
 	clear();
 	activeVote = null;
@@ -328,6 +347,10 @@ function GetSaveList(){
 
 
 async function GenerateVoteMessage(){
+    if(!activeVote || !Array.isArray(activeVote)){
+        return;
+    }
+    
     if(activeVoteEntry){
         let output = ""
         activeVote.forEach((option, index) => {
@@ -447,19 +470,21 @@ async function StartTwitchVote(options, duration, finishCallback){
 
     // run a timer to update the vote message every second
     let timer = setInterval(() => {
-        timeLeft--
-        if(timeLeft <= 0){
-            clearInterval(timer)
+        if(timeLeft > 0){
+            timeLeft--;
+            GenerateVoteMessage();
         }
-        GenerateVoteMessage()
-    }, 1000)
+        if(timeLeft <= 0){
+            clearInterval(timer);
+        }
+    }, 1000);
 }
 
 function startChatThemeSubmission() {
     gameData.state = 'chat_theme_submission';
     gameData.chatThemeSubmissions = {};
     toggleInput(false);
-    let duration = parseInt(elements.voteTime.value);
+    let duration = parseInt(elements.suggestionTime.value);
     let [timerLine] = writeToTerminal(`Chat: suggest a theme (up to 3 words) using &c!theme [theme]&f. ${duration} seconds remaining.`, true);
     let remaining = duration;
     let countdown = setInterval(() => {
@@ -471,20 +496,143 @@ function startChatThemeSubmission() {
             clearInterval(countdown);
         }
     }, 1000);
-    setTimeout(() => {
+    setTimeout(async () => {
         clearInterval(countdown);
         timerLine.remove();
         let subs = Object.values(gameData.chatThemeSubmissions);
-        if (!subs.length) subs = ['fantasy'];
-        // combine all the chat’s suggestions into one multi-word theme:
-        let theme = subs.join(' ');
-        gameData.theme = theme;
-        writeToTerminal(`Chat chose theme: ${theme}`, true);
-        gameData.state = 'theme';
-        executeCommand(theme);
+        if (!subs.length) subs = ['fantasy', 'sci-fi', 'horror'];
+
+        writeToTerminal(`Received ${subs.length} suggestion(s). AI is compiling vote options...`, true);
+
+        let endpoint = `v1/chat/completions`;
+        let prompt = `You are helping set up a text-based adventure game. Chat viewers have submitted the following theme suggestions:\n${subs.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nBased on these suggestions, compile exactly 5 unique and interesting theme options for the players to vote on. You may combine, refine, or remix suggestions. Keep each option to 1-4 words. Do not number the options. Each option MUST use a different minecraft color code (e.g. &6, &b, &a, &e, &d) followed by &f to reset. Example option: "&6Dark Fantasy&f"`;
+        const body = {
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
+            messages: [{role: 'system', content: prompt}, {role: 'user', content: 'Generate 5 theme options based on the suggestions.'}],
+            response_format: {
+                type: "json_schema",
+                json_schema: {
+                    name: "theme_options",
+                    schema: {
+                        type: "object",
+                        properties: {
+                            options: {
+                                type: "array",
+                                items: { type: "string" },
+                                minItems: 5,
+                                maxItems: 5
+                            }
+                        },
+                        required: ["options"],
+                        additionalProperties: false
+                    },
+                    strict: true
+                }
+            },
+            stream: false
+        };
+
+        try {
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+            if (response.status === 200) {
+                let options = JSON.parse(response.data.choices[0].message.content);
+                let voteOptions = options.options.map(opt => ({text: opt.replace(/^\d+\.\s*/, '').trim()}));
+
+                writeToTerminal("-------------------------", true);
+                writeToTerminal(`Viewers, vote for the adventure theme!`);
+
+                viewerVotes = [];
+                StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), (winner) => {
+                    gameData.theme = winner.text;
+                    writeToTerminal(`Chat chose theme: ${winner.text}`, true);
+                    gameData.state = 'theme';
+                    executeCommand(winner.text);
+                });
+            } else {
+                gameData.theme = subs[0] || 'fantasy';
+                writeToTerminal(`AI compilation failed. Using theme: ${gameData.theme}`, true);
+                gameData.state = 'theme';
+                executeCommand(gameData.theme);
+            }
+        } catch (error) {
+            console.error('Error compiling theme options:', error);
+            gameData.theme = subs[0] || 'fantasy';
+            writeToTerminal(`AI compilation failed. Using theme: ${gameData.theme}`, true);
+            gameData.state = 'theme';
+            executeCommand(gameData.theme);
+        }
     }, duration * 1000);
 }
 
+function startFreeformActionSubmission(callback) {
+    gameData.state = 'freeform_action_submission';
+    gameData.freeformActionSubmissions = {};
+    toggleInput(false);
+    let duration = parseInt(elements.suggestionTime.value);
+    let [timerLine] = writeToTerminal(`Chat: suggest an action using &c!suggest [action]&f. ${duration} seconds remaining.`, true);
+    let remaining = duration;
+    let countdown = setInterval(() => {
+        remaining--;
+        if (remaining >= 0) {
+            timerLine.innerHTML = parseMinecraftColorCodes(`Chat: suggest an action using &c!suggest [action]&f. ${remaining} seconds remaining.`);
+        }
+        if (remaining <= 0) {
+            clearInterval(countdown);
+        }
+    }, 1000);
+    setTimeout(async () => {
+        clearInterval(countdown);
+        timerLine.remove();
+        let subs = Object.values(gameData.freeformActionSubmissions);
+        if (!subs.length) subs = ['Look around', 'Move forward', 'Search for items'];
+
+        writeToTerminal(`Received ${subs.length} suggestion(s). AI is compiling vote options...`, true);
+
+        let endpoint = `v1/chat/completions`;
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Chat viewers have submitted the following action suggestions for the player's next move:\n${subs.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nBased on these suggestions, compile exactly 5 unique action options for the players to vote on. You may combine, refine, or remix suggestions to create interesting choices. Keep each option under 25 words. Do not number the options. Each option MUST use a different minecraft color code (e.g. &6, &b, &a, &e, &d) followed by &f to reset. Example: "&6Slash the goblin with your sword&f"`;
+        const body = {
+            model: elements.gptModelSelect.value || 'gpt-4o-mini',
+            messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'user', content: 'Generate 5 action options based on the chat suggestions.'}],
+            response_format: {
+                type: "json_schema",
+                json_schema: {
+                    name: "vote_options",
+                    schema: {
+                        type: "object",
+                        properties: {
+                            options: {
+                                type: "array",
+                                items: { type: "string" },
+                                minItems: 5,
+                                maxItems: 5
+                            }
+                        },
+                        required: ["options"],
+                        additionalProperties: false
+                    },
+                    strict: true
+                }
+            },
+            stream: false
+        };
+
+        try {
+            const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+            if (response.status === 200) {
+                let options = JSON.parse(response.data.choices[0].message.content);
+                let voteOptions = options.options.map(opt => ({text: opt.replace(/^\d+\.\s*/, '').trim()}));
+                callback(voteOptions);
+            } else {
+                let voteOptions = subs.slice(0, 5).map(s => ({text: s}));
+                callback(voteOptions);
+            }
+        } catch (error) {
+            console.error('Error compiling freeform options:', error);
+            let voteOptions = subs.slice(0, 5).map(s => ({text: s}));
+            callback(voteOptions);
+        }
+    }, duration * 1000);
+}
 
 function imageToMinecraftAscii(ctx, width, height, outputWidth, output) {
     // Minecraft color codes mapping
@@ -580,10 +728,7 @@ async function generateImage(prompt, callback){
     try{
         let summary = await asyncGenerateSummary(prompt)
 
-        // json parse the summary
-        let summaryData = JSON.parse(summary)
-
-        prompt = summaryData.choices[0].message.content
+        prompt = summary
 
         // generate an image using dall-e
         let endpoint = `v1/images/generations`
@@ -597,53 +742,40 @@ async function generateImage(prompt, callback){
 
         const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
-        if (response.status === 200) {
-            // read whole stream and get the image.
-            let image = ""
-            HandleStream(response.body, async(text) => {
-                image += text
-            }, () => {
-                // parse json
-                try {
-                    let content = JSON.parse(image)
-
-                    let imageb64 = content.data[0].b64_json;
+        if (response.ok) {
+            const data = await response.json();
+            
+            try {
+                let imageb64 = data.data[0].b64_json;
+                
+                let img = new Image();
+                img.src = 'data:image/png;base64,' + imageb64;
+                img.onload = function() {
                     
-                    let img = new Image();
-                    img.src = 'data:image/png;base64,' + imageb64;
-                    img.onload = function() {
-                        
-                        // resize the image to 32x32
-                        const canvas = document.createElement('canvas');
-                        const ctx = canvas.getContext('2d');
-                        canvas.width = 32;
-                        canvas.height = 32;
-                        ctx.drawImage(img, 0, 0, 32, 32);
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    canvas.width = 32;
+                    canvas.height = 32;
+                    ctx.drawImage(img, 0, 0, 32, 32);
 
-                        // add image to output
-                        const imageDiv = document.createElement('div');
-                        imageDiv.classList.add('image');
-                        imageDiv.appendChild(img);
-                        elements.outputDiv.appendChild(imageDiv);
-                        // Scroll to the bottom of the terminal
-                        elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
+                    const imageDiv = document.createElement('div');
+                    imageDiv.classList.add('image');
+                    imageDiv.appendChild(img);
+                    elements.outputDiv.appendChild(imageDiv);
+                    elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
 
-                        if(callback){
-                            callback()
-                        }
-                    };
-
-                } catch (error) {
-                    console.log(error)
                     if(callback){
                         callback()
                     }
+                };
 
+            } catch (error) {
+                console.log(error)
+                if(callback){
+                    callback()
                 }
-                
-            
-            });
-        }else{
+            }
+        } else {
             console.log(response)
             if(callback){
                 callback()
@@ -683,21 +815,23 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: "user", content: text}],
-            max_tokens: 100
+            max_tokens: 100,
+            stream: false
         };
         
         const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
         if (response.status === 200) {
-            let output = "";
-            HandleStream(response.body, (text) => {
-                output += text
-            }, () => {
-                resolve(output)
-            });
-        }else{
-            console.log(response)
-            reject()
+            try {
+                const summary = response.data.choices[0].message.content;
+                resolve(summary);
+            } catch (error) {
+                console.error('Error parsing summary:', error);
+                reject(error);
+            }
+        } else {
+            console.log(response);
+            reject();
         }
     })
 }
@@ -724,6 +858,16 @@ async function ConnectToTwitch(){
                     const suggestion = messageText.slice(6).trim();
                     if (!gameData.chatThemeSubmissions[username] && suggestion.split(/\s+/).length <= 3) {
                         gameData.chatThemeSubmissions[username] = suggestion;
+                        writeToTerminal(username + ' suggested: ' + suggestion, true);
+                    }
+                }
+            }
+
+            if (gameData.state === 'freeform_action_submission') {
+                if (messageText.startsWith('!suggest ')) {
+                    const suggestion = messageText.slice(9).trim();
+                    if (!gameData.freeformActionSubmissions[username] && suggestion.length > 0 && suggestion.length <= 100) {
+                        gameData.freeformActionSubmissions[username] = suggestion;
                         writeToTerminal(username + ' suggested: ' + suggestion, true);
                     }
                 }
@@ -899,7 +1043,7 @@ async function HandleStream(stream, callback, done) {
 	  }
 	  done();
 	} catch (err) {
-	  // most likely an AbortError — just swallow and exit
+	  // most likely an AbortError â€” just swallow and exit
 	}
 }
 
@@ -1573,9 +1717,94 @@ Before proceeding into this intriguing yet eerie setting, it's time to focus on 
     })
 }
 
+async function continueWithViewerAction(actionText) {
+    writeToTerminal(`${gameData.characters.twitch_chat.name} decides to ${actionText}`)
+
+    writeToTerminal("-------------------------", true)
+    
+    let endpoint = `v1/chat/completions`
+    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up, Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice promptsâ€”only describe the outcome and what happens next`;
+    
+    const body = {
+        model: elements.gptModelSelect.value || 'gpt-4o-mini',
+        messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.twitch_chat.name} decides to ${actionText}`}],
+        stream: true,
+    };
+
+    compressAndAddToHistory( `${gameData.characters.twitch_chat.name} decides to ${actionText}`, "user")
+
+    toggleInput(false)
+    const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+
+    if (response.status === 200) {
+        let output = "";
+        
+        HandleStream(response.body, (text) => {
+
+            if (typeof text !== 'string' || text.trim() === '') {
+                return;
+            }
+
+            const completion = parseStreamChunk(text);
+            if (completion != null) {
+                console.log(completion.toString())
+                output += completion;
+            }
+            
+
+        }, async () => {
+            toggleInput(false)
+            if(elements.aiImages.checked){
+                await asyncGenerateImage(output)
+            }
+            toggleInput(true)
+
+            
+            compressAndAddToHistory( output, "assistant")
+            writeToTerminal(output)
+            writeToTerminal("-------------------------", true)
+
+            waitForKeypress(async () => {
+                toggleInput(false)
+                checkForChangesAsync(output, true)
+
+                if(!gameData.died){
+
+                    writeToTerminal("-------------------------", true)
+                    if(elements.streamerParticipates.checked){
+                        writeToTerminal(`Streamer, it's your turn. Please type your move.`)
+                        gameData.state = "streamer_turn"
+                        toggleInput(true)
+                    }else
+                    {
+                        gameData.state = "viewer_turn"
+                        runGameLoop()
+                    }
+
+                }
+                    
+            })
+        });
+    }
+}
+
 async function runGameLoop(){
-    // if viewer turn, generate things they can vote to do next.
     if(gameData.state == "viewer_turn"){
+        if(elements.freeformVotes.checked){
+            startFreeformActionSubmission((voteOptions) => {
+                writeToTerminal("-------------------------", true);
+                writeToTerminal(`Viewers, please vote for the next move.`);
+            
+                toggleInput(false);
+                viewerVotes = [];
+                
+                StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), async (winner) => {
+                    continueWithViewerAction(winner.text);
+                });
+            });
+            return;
+        }
+        
         toggleInput(false)
         let endpoint = `v1/chat/completions`
         let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's next move. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options.`;
@@ -1626,84 +1855,8 @@ async function runGameLoop(){
                 viewerVotes = []
                 
                 StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), async (winner) => {
-                    writeToTerminal(`${gameData.characters.twitch_chat.name} decides to ${winner.text}`)
-
-                    writeToTerminal("-------------------------", true)
-                    
-                    // generate the AI response to the player's move
-                    let endpoint = `v1/chat/completions`
-                    let prompt = gptBasePrompt + `The theme of the game is ${gameData.theme}. Respond to ${gameData.characters.player.name}'s action, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up, Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`;
-                    
-                    
-                    
-                    const body = {
-                        model: elements.gptModelSelect.value || 'gpt-4o-mini',
-                        messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.twitch_chat.name} decides to ${winner.text}`}],
-                        stream: true,
-                    };
-
-                    compressAndAddToHistory( `${gameData.characters.twitch_chat.name} decides to ${winner.text}`, "user")
-
-                    toggleInput(false)
-                    const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
-
-                    if (response.status === 200) {
-                        let output = "";
-                        
-                        HandleStream(response.body, (text) => {
-
-                            if (typeof text !== 'string' || text.trim() === '') {
-                                return;
-                            }
-
-                            const completion = parseStreamChunk(text);
-                            if (completion && completion.trim().length > 0) {
-                                console.log(completion.toString())
-                                output += completion;
-                            }
-                            
-
-                        }, async () => {
-                            toggleInput(false)
-                            if(elements.aiImages.checked){
-                                await asyncGenerateImage(output)
-                            }
-                            toggleInput(true)
-
-                            
-                
-                            compressAndAddToHistory( output, "assistant")
-                            writeToTerminal(output)
-                            writeToTerminal("-------------------------", true)
-
-                            waitForKeypress(async () => {
-                                toggleInput(false)
-                                checkForChangesAsync(output, true)
-
-                                if(!gameData.died){
-
-                                    writeToTerminal("-------------------------", true)
-                                    // check if the streamer is participating
-                                    if(elements.streamerParticipates.checked){
-                                        // tell the streamer it's their turn
-                                        writeToTerminal(`Streamer, it's your turn. Please type your move.`)
-                                        gameData.state = "streamer_turn"
-                                        toggleInput(true)
-                                    }else
-                                    {
-                                        gameData.state = "viewer_turn"
-                                        runGameLoop()
-                                    }
-
-                                }
-                                    
-                            })
-                        });
-                    }
-
-
-
-                })
+                    continueWithViewerAction(winner.text);
+                });
             } catch (error) {
                 console.error('Error parsing vote options:', error);
                 toggleInput(true);
@@ -1849,7 +2002,7 @@ To start your adventure, Iron Claws is equipped with a few essential items:
 - **Thieves' Tools**: A small pouch containing lockpicks and other instruments necessary for a rogue.
 - **Health Potion**: A vial filled with a shimmering liquid to restore her energy in times of need.
 
-The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the sight, cat!” he remarks. “With your skills, you are bound to find interesting challenges ahead.”As you take in your surroundings, you notice various quests on the notice board, each promising adventure and rewards.I see you have someone with you, who is that?`}, {role: "assistant", content: `Iron Claws is a cunning, agile, and sharp-witted old cat rogue with a wiry build and matted fur. Her emerald-green eyes reflect mischief and intelligence. Despite her age and short temper, she remains loyal to those who earn her trust, using her honed iron claws as deadly weapons.`}, {role: 'user', content: description}],
+The Guildmaster nods approvingly as he surveys Iron Claws. â€œYou're quite the sight, cat!â€ he remarks. â€œWith your skills, you are bound to find interesting challenges ahead.â€As you take in your surroundings, you notice various quests on the notice board, each promising adventure and rewards.I see you have someone with you, who is that?`}, {role: "assistant", content: `Iron Claws is a cunning, agile, and sharp-witted old cat rogue with a wiry build and matted fur. Her emerald-green eyes reflect mischief and intelligence. Despite her age and short temper, she remains loyal to those who earn her trust, using her honed iron claws as deadly weapons.`}, {role: 'user', content: description}],
         stream: true,
     };
 
@@ -1865,7 +2018,7 @@ The Guildmaster nods approvingly as he surveys Iron Claws. “You're quite the s
             }
 
             const completion = parseStreamChunk(text);
-            if (completion && completion.trim().length > 0) {
+            if (completion != null) {
                 console.log(completion.toString())
                 output += completion;
             }
@@ -2149,14 +2302,183 @@ async function updateSceneCharacters(text){
 	}
 }
 
+async function finishViewerCharacterCreation(prunedHistory) {
+    let endpoint = `v1/chat/completions`
+    let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items. Use proper line breaks (\\n) to separate different sections and pieces of information for readability. Put a blank line between major sections.`
+    const body = {
+        model: elements.gptModelSelect.value || 'gpt-4o-mini',
+        messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: gameData.characters.twitch_chat.description}],
+        stream: true,
+    };
+
+    const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+
+    if (response.status === 200) {
+        compressAndAddToHistory( gameData.characters.twitch_chat.description, "user")
+        prunedHistory.push({content: gameData.characters.twitch_chat.description, role: "user"})
+        let [msg, save_entry] = writeToTerminal(``, true);
+        let output = "";
+        let ttsText = ""
+        
+        HandleStream(response.body, (text) => {
+
+            if (typeof text !== 'string' || text.trim() === '') {
+                return;
+            }
+
+            const completion = parseStreamChunk(text);
+            if (completion != null) {
+                console.log(completion.toString())
+                output += completion;
+
+                ttsText += completion
+
+                var sentences = ttsText.split(/(?<=[.!?])\s*/);
+                if(sentences.length > 1){
+                    let firstSentence = sentences.shift().trim()
+                    ttsText = sentences.join("")
+                    TryToSpeak(firstSentence)
+                }
+
+                msg.innerHTML = parseMinecraftColorCodes(output);
+
+                if (save_entry) {
+                    save_entry.text = output;
+                }
+
+                elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
+            }
+        }, async () => {
+            toggleInput(false)
+            if(ttsText.length > 0){
+                TryToSpeak(ttsText)
+            }
+            if(elements.aiImages.checked){
+                await asyncGenerateImage(gameData.characters.twitch_chat.description)
+            }
+
+            await asyncGeneratePlayerCharacterInfo(output, true)
+            toggleInput(false)
+            writeToLog("-------------------------", true)
+            writeToLog(`Chat's character, ${gameData.characters.twitch_chat.name}, has been created. Here are the details:`, true)
+            writeToLog(GetPlayerCharacterInfo(true), true)
+            writeToLog("-------------------------", true)
+
+            compressAndAddToHistory( output, "assistant")
+
+            if(!gameData.died){
+                waitForKeypress(async () => {
+                    if(elements.streamerParticipates.checked){
+                        gameData.state = "streamer_turn"
+                        writeToTerminal("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
+                        writeToTerminal("You may also check your characters by typing 'info'.")
+                        toggleInput(true)
+                    }else{
+                        gameData.state = "viewer_turn"
+                        toggleInput(false)
+                        runGameLoop()
+                    }
+                });
+            }
+        });
+    }
+}
 
 async function viewerCharacterSelection(prunedHistory){
-    // have the AI generate different options for the viewers to pick from, and go through the gameData.viewerCharacterSelectionFlow
-
-    // clear vote
     viewerVotes = []
     activeVote = null
     activeVoteEntry = null
+
+    let isName = gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState].toLowerCase() == "name"
+
+    if(elements.freeformVotes.checked){
+        gameData.state = 'freeform_action_submission';
+        gameData.freeformActionSubmissions = {};
+        toggleInput(false);
+        let selectionType = gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState];
+        let duration = parseInt(elements.suggestionTime.value);
+        let [timerLine] = writeToTerminal(`Chat: suggest a ${selectionType} using &c!suggest [option]&f. ${duration} seconds remaining.`, true);
+        let remaining = duration;
+        let countdown = setInterval(() => {
+            remaining--;
+            if (remaining >= 0) {
+                timerLine.innerHTML = parseMinecraftColorCodes(`Chat: suggest a ${selectionType} using &c!suggest [option]&f. ${remaining} seconds remaining.`);
+            }
+            if (remaining <= 0) {
+                clearInterval(countdown);
+            }
+        }, 1000);
+        setTimeout(async () => {
+            clearInterval(countdown);
+            timerLine.remove();
+            let subs = Object.values(gameData.freeformActionSubmissions);
+            if (!subs.length) subs = ['Warrior', 'Mage', 'Rogue'];
+
+            writeToTerminal(`Received ${subs.length} suggestion(s). AI is compiling vote options...`, true);
+
+            let endpoint = `v1/chat/completions`;
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Chat viewers have submitted the following suggestions for the character's ${selectionType}:\n${subs.map((s, i) => `${i + 1}. ${s}`).join('\n')}\n\nBased on these suggestions, compile exactly 5 unique options for the character's ${selectionType}. You may combine, refine, or remix suggestions. Keep each option under 25 words. Do not number the options. Make sure the options are only related to ${selectionType} and not the story. Each option MUST use a different minecraft color code (e.g. &6, &b, &a, &e, &d) followed by &f to reset. Example: "&b Cyber Elf&f"`;
+            const body = {
+                model: elements.gptModelSelect.value || 'gpt-4o-mini',
+                messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: `Generate 5 ${selectionType} options based on the chat suggestions.`}],
+                response_format: {
+                    type: "json_schema",
+                    json_schema: {
+                        name: "vote_options",
+                        schema: {
+                            type: "object",
+                            properties: {
+                                options: {
+                                    type: "array",
+                                    items: { type: "string" },
+                                    minItems: 5,
+                                    maxItems: 5
+                                }
+                            },
+                            required: ["options"],
+                            additionalProperties: false
+                        },
+                        strict: true
+                    }
+                },
+                stream: false
+            };
+
+            let voteOptions;
+            try {
+                const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
+                if (response.status === 200) {
+                    let options = JSON.parse(response.data.choices[0].message.content);
+                    voteOptions = options.options.map(opt => ({text: opt.replace(/^\d+\.\s*/, '').trim()}));
+                } else {
+                    voteOptions = subs.slice(0, 5).map(s => ({text: s}));
+                }
+            } catch (error) {
+                console.error('Error compiling character options:', error);
+                voteOptions = subs.slice(0, 5).map(s => ({text: s}));
+            }
+
+            gameData.state = 'viewer_character_selection';
+
+            writeToTerminal("-------------------------", true);
+            writeToTerminal(`Viewers, please vote for the ${selectionType} of your character.`);
+
+            StartTwitchVote(voteOptions, parseInt(elements.voteTime.value), async (winner) => {
+                gameData.characters.twitch_chat.description += `${selectionType}: ${winner.text}\n`
+
+                gameData.viewerCharacterSelectionState++
+                writeToTerminal(`Viewers have chosen "${winner.text}."`)
+                if(gameData.viewerCharacterSelectionState < gameData.viewerCharacterSelectionFlow.length){
+                    waitForKeypress(async () => {
+                        viewerCharacterSelection(prunedHistory)
+                    })
+                }else{
+                    finishViewerCharacterCreation(prunedHistory);
+                }
+            });
+        }, duration * 1000);
+        return;
+    }
 
     let endpoint = `v1/chat/completions`
     let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. You are generating vote options for the player's ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]}. Their character so far is ${gameData.characters.twitch_chat.description}. Please provide 5 options for the player to choose from, keep these options under 25 words, do not add additional story info, ONLY reply with the options. Do not number the options. Make sure the options are only related to ${gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState]} and not the story.`
@@ -2186,8 +2508,6 @@ async function viewerCharacterSelection(prunedHistory){
         },
         stream: false
     };
-    
-    let isName = gameData.viewerCharacterSelectionFlow[gameData.viewerCharacterSelectionState].toLowerCase() == "name"
 
     const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
 
@@ -2219,91 +2539,7 @@ async function viewerCharacterSelection(prunedHistory){
                         viewerCharacterSelection(prunedHistory)
                     })
                 }else{
-                    // have the AI summarize the character
-                    let endpoint = `v1/chat/completions`
-                    let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please summarize the character, add additional details if necessary. You may also give the player some starting items.`
-                    const body = {
-                        model: elements.gptModelSelect.value || 'gpt-4o-mini',
-                        messages: [{role: 'system', content: prompt}, ...prunedHistory, {role: 'user', content: gameData.characters.twitch_chat.description}],
-                        stream: true,
-                    };
-
-                    const response = await GPTRequest(endpoint, elements.apiKeyInput.value, body);
-
-                    if (response.status === 200) {
-                        compressAndAddToHistory( gameData.characters.twitch_chat.description, "user")
-                        prunedHistory.push({content: gameData.characters.twitch_chat.description, role: "user"})
-                        let [msg, save_entry] = writeToTerminal(``, true);
-                        let output = "";
-                        let ttsText = ""
-                        
-                        HandleStream(response.body, (text) => {
-
-                            if (typeof text !== 'string' || text.trim() === '') {
-                                return;
-                            }
-
-                            const completion = parseStreamChunk(text);
-                            if (completion && completion.trim().length > 0) {
-                                console.log(completion.toString())
-                                output += completion;
-
-                                ttsText += completion
-
-                                var sentences = ttsText.split(/(?<=[.!?])\s*/);
-                                if(sentences.length > 1){
-                                    let firstSentence = sentences.shift().trim()
-                                    ttsText = sentences.join("")
-                                    TryToSpeak(firstSentence)
-                                }
-
-                                msg.innerHTML = parseMinecraftColorCodes(output);
-
-                                if (save_entry) {
-                                    save_entry.text = output;
-                                }
-
-                                elements.outputDiv.scrollTop = elements.outputDiv.scrollHeight;
-                            }
-                            
-
-                        }, async () => {
-                            toggleInput(false)
-                            if(elements.aiImages.checked){
-                                await asyncGenerateImage(gameData.characters.twitch_chat.description)
-                            }
-                            
-
-                            await asyncGeneratePlayerCharacterInfo(output, true)
-                            toggleInput(true)
-                            // print character info
-                            writeToLog("-------------------------", true)
-                            writeToLog(`Your character, ${gameData.characters.twitch_chat.name}, has been created. Here are the details:`, true)
-                            writeToLog(GetPlayerCharacterInfo(true), true)
-                            writeToLog("-------------------------", true)
-
-                            waitForKeypress(async () => {
-                                compressAndAddToHistory( output, "assistant")
-                                if(ttsText.length > 0){
-                                    TryToSpeak(ttsText)
-                                }
-
-            
-                                
-                                toggleInput(true)
-                                // check if the streamer is participating
-                                if(elements.streamerParticipates.checked){
-                                    gameData.state = "streamer_turn"
-                                    writeToTerminal("To start your adventure, type anything you like, such as 'look around' or 'go north'.")
-                                    writeToTerminal("You may also check your characters by typing 'info'.")                                        
-                                }else{
-                                    gameData.state = "viewer_turn"
-
-                                    runGameLoop()
-                                }
-                            });
-                        });
-                    }
+                    finishViewerCharacterCreation(prunedHistory);
                 }
             })
         } catch (error) {
@@ -2358,7 +2594,7 @@ async function executeCommand(input) {
         gameData.theme = input;
         // have the AI generate a starting setting
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description of the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. Keep it brief, Do not provide any numbered lists, options, or choice prompts—only describe the scene and then ask the player to describe their character.`;
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please give a brief description of the starting location and situation. Note you do not know the player's name, race, or anything about them yet. Do not include any player specific information. Keep it brief, Do not provide any numbered lists, options, or choice promptsâ€”only describe the scene and then ask the player to describe their character.`;
         const body = {
             model: elements.gptModelSelect.value || 'gpt-4o-mini',
             messages: [{role: 'system', content: prompt}, {role: 'user', content: "Please describe the starting location and situation."}],
@@ -2379,7 +2615,7 @@ async function executeCommand(input) {
                 }
 
                 const completion = parseStreamChunk(text);
-                if (completion && completion.trim().length > 0) {
+                if (completion != null) {
                     output += completion;
 
                     ttsText += completion
@@ -2452,7 +2688,7 @@ async function executeCommand(input) {
         gameData.characters.player.name = input
 
         let endpoint = `v1/chat/completions`
-        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. The player has described their character. Please summarize their character, add additional details if necessary. You may also give them some starting items. Remember, the description provided IS the player character themselves, not a companion or someone at their side.`
+        let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. The player has described their character. Please summarize their character, add additional details if necessary. You may also give them some starting items. Remember, the description provided IS the player character themselves, not a companion or someone at their side. Use proper line breaks to separate different sections and pieces of information for better readability.`
 
         if(elements.twitchChannelInput.value && elements.twitchChannelInput.value.length > 0){
             prompt = prompt + ` After describing the player character, note that they have other adventurers (viewers) with them, and ask "Who are your companions?"`
@@ -2482,7 +2718,7 @@ async function executeCommand(input) {
                 }
 
                 const completion = parseStreamChunk(text);
-                if (completion && completion.trim().length > 0) {
+                if (completion != null) {
                     output += completion;
 
                     ttsText += completion
@@ -2552,12 +2788,11 @@ async function executeCommand(input) {
         }else{
             writeToTerminal(`${gameData.characters.player.name} decides to ${input}`, true)
 
-            viewerTurn = false
             writeToTerminal("-------------------------", true)
             
             // generate the AI response to the player's move
             let endpoint = `v1/chat/completions`
-            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up,  Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice prompts—only describe the outcome and what happens next`
+            let prompt = gptBasePrompt + ` The theme of the game is ${gameData.theme}. Please respond to ${gameData.characters.player.name}'s move, continue the story from where they left off, using the move as a reference for what they are doing. if in combat make sure to take this turn to decide what the opponents do in response to the player's action, if fighting pirates for example make sure they actually do something and not just exchange glances or "think of what to do next", you are controlling any opponents that come up,  Keep it brief. Do not lead the player, let them decide what to do next. Don't give them options. Do not ask them for their next move. Do not display their stats in your response. Do not include any options, numbered lists, or choice promptsâ€”only describe the outcome and what happens next`
             const body = {
                 model: elements.gptModelSelect.value || 'gpt-4o-mini',
                 messages: [{role: 'system', content: prompt}, ...gameData.history, {role: 'assistant', content: GetPlayerCharacterInfo(true)}, {role: 'user', content: `${gameData.characters.player.name} decides to ${input}`}],
@@ -2579,7 +2814,7 @@ async function executeCommand(input) {
                     }
 
                     const completion = parseStreamChunk(text);
-                    if (completion && completion.trim().length > 0) {
+                    if (completion != null) {
                         console.log(completion.toString())
                         output += completion;
                     }
@@ -2640,8 +2875,9 @@ function parseMinecraftColorCodes(text) {
 	  '&f': 'color:#FFFFFF'
 	};
   
-	text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-	text = text.replace(/\*(.+?)\*/g, '<em>$1</em>');
+	text = text.replace(/\*\*([^\*]+?)\*\*/g, '<strong>$1</strong>');
+	text = text.replace(/\*([^\*]+?)\*/g, '<em>$1</em>');
+	text = text.replace(/\n/g, '<br>');
   
 	let result = '';
 	let open = false;
